@@ -1,7 +1,7 @@
 """Test the CLI"""
 import unittest
-from oxn.argparser import parser
-from oxn.argparser import parse_oxn_args
+from oxn.cli.argparser import parser
+from oxn.cli.argparser import parse_oxn_args
 import unittest.mock as mock
 
 
@@ -139,3 +139,47 @@ class CommandLineTests(unittest.TestCase):
         test_args = [self.experiment_spec_mock]
         parsed = parser.parse_args(test_args)
         self.assertTrue(parsed.times == 1)
+
+    @mock.patch("os.path.exists")
+    def test_an_experiment_spec_is_the_default_command(self, mock_exists):
+        mock_exists.return_value = True
+        args = parse_oxn_args([self.experiment_spec_mock])
+        self.assertEqual(args.command, "run")
+        self.assertEqual(args.spec, self.experiment_spec_mock)
+
+    def test_it_parses_setup(self):
+        args = parse_oxn_args(["setup", "--yes"])
+        self.assertEqual(args.command, "setup")
+        self.assertTrue(args.yes)
+        self.assertFalse(args.dry_run)
+        self.assertEqual(args.log_level, "warning")
+
+    @mock.patch("os.path.exists")
+    def test_only_setup_defaults_to_warning(self, mock_exists):
+        mock_exists.return_value = True
+        self.assertEqual(parse_oxn_args([self.experiment_spec_mock]).log_level, "info")
+        self.assertEqual(parse_oxn_args(["deploy", self.experiment_spec_mock]).log_level, "info")
+        self.assertEqual(parse_oxn_args(["teardown", self.experiment_spec_mock]).log_level, "info")
+        self.assertEqual(parse_oxn_args(["setup"]).log_level, "warning")
+
+    @mock.patch("os.path.exists")
+    def test_it_parses_deploy_and_teardown(self, mock_exists):
+        mock_exists.return_value = True
+        for command in ("deploy", "teardown"):
+            with self.subTest(command=command):
+                args = parse_oxn_args([command, self.experiment_spec_mock, "--loglevel", "debug"])
+                self.assertEqual(args.command, command)
+                self.assertEqual(args.spec, self.experiment_spec_mock)
+                self.assertEqual(args.log_level, "debug")
+
+    @mock.patch("argparse.ArgumentParser._print_message", mock.MagicMock)
+    def test_deploy_throws_on_nonexisting_spec(self):
+        with self.assertRaises(SystemExit):
+            parse_oxn_args(["deploy", self.experiment_spec_mock])
+
+    @mock.patch("os.path.exists")
+    @mock.patch("argparse.ArgumentParser._print_message", mock.MagicMock)
+    def test_local_mode_is_gone(self, mock_exists):
+        mock_exists.return_value = True
+        with self.assertRaises(SystemExit):
+            parse_oxn_args([self.experiment_spec_mock, "--local"])

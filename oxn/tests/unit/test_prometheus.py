@@ -5,8 +5,8 @@ import requests
 from requests import Session
 from unittest.mock import patch
 
-from oxn.errors import PrometheusException
-from oxn.prometheus import Prometheus
+from oxn.common.errors import PrometheusException
+from oxn.observability.prometheus import Prometheus
 
 import warnings
 warnings.simplefilter("ignore", ResourceWarning)

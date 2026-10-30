@@ -2,16 +2,20 @@
 
 experiment_spec_mock = """
     experiment:
+      version: 0.0.1
+      orchestrator: docker-compose
       responses:
         - my_metric_response_no_params:
             metric_name: prometheus_metric
             type: metric
+            target: sue
             step: 5
             left_window: 2m
             right_window: 0m
         - otelcol_spans:
             metric_name: otelcol_exporter_sent_spans
             type: metric
+            target: sue
             labels: {exporter: logging}
             step: 1
             left_window: 2m
@@ -32,13 +36,7 @@ experiment_spec_mock = """
         exclude: [loadgenerator]
         include: [otelcol]
       loadgen:
-        run_time: 20s 
-        stages:
-            - {"duration": 5, "users": 1, "spawn_rate": 1}
-            - {"duration": 15, "users": 10, "spawn_rate": 2}
-        tasks:
-            - {name: some_task_name, "endpoint": "/api/cart", "verb": "get", weight: 2, params: {}}
-            - {name: some_other_task, "endpoint": "/", "verb": "get", weight: 5, params: {}}
+        run_time: 20s
     """
 metric_rvar_description_mock = {
     "some_prometheus_metric": {
@@ -77,21 +75,32 @@ experiment:
 kubernetes_experiment = """
 # inject a packet delay of 0-90ms while increasing the otel metric inverval to 1s
 experiment:
+  version: 0.0.1
+  orchestrator: kubernetes
+  services:
+    jaeger: {name: jaeger, namespace: system-under-evaluation}
+    prometheus: [
+      {name: prometheus, namespace: system-under-evaluation, target: sue},
+      {name: kube-prometheus-kube-prome-prometheus, namespace: oxn-external-monitoring, target: oxn},
+    ]
   responses:
     - recommendations_total:
         type: metric
+        target: sue
         metric_name: increase(app_recommendations_counter_total[90s])
         left_window: 240s
         right_window: 240s
         step: 1
+  treatments:
+    - empty_treatment:
+        action: empty
+        params: {duration: 1m}
   sue:
     compose: opentelemetry-demo/docker-compose.yml
     exclude: [loadgenerator]
-    required: [{namespace: monitoring, name: grafana}, {namespace: monitoring, name: node-exporter}] 
+    required: [{namespace: monitoring, name: grafana}, {namespace: monitoring, name: node-exporter}]
   loadgen:
     run_time: 10m
-    stages: 
-    - {duration: 600, users: 50, spawn_rate: 25}
-    tasks:
-    - { endpoint: /, verb: get, weight: 1, params: { } }
+    locust_files: [{path: locust/locust_basic_interaction.py}]
+    target: {name: frontend-proxy, namespace: system-under-evaluation, port: 8080}
 """

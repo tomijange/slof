@@ -1,18 +1,24 @@
 import unittest
+from unittest import mock
+
+import pandas as pd
 import yaml
 
-from oxn.observer import Observer
-from oxn.utils import utc_timestamp
+from oxn.core.runner import ExperimentRunner
+from oxn.core.validation import validate_syntax
+from oxn.observability.observer import Observer
+from oxn.common.utils import utc_timestamp
 from oxn.tests.unit.spec_mocks import experiment_spec_mock
 
 
 class ObserverTest(unittest.TestCase):
-    loaded = yaml.safe_load(experiment_spec_mock)
+    loaded = validate_syntax(yaml.safe_load(experiment_spec_mock))
 
     def setUp(self) -> None:
         self.now = utc_timestamp()
         self.five_min_ago = self.now - 5 * 60
         self.observer = Observer(
+            orchestrator=mock.MagicMock(),
             config=self.loaded,
             experiment_start=self.five_min_ago,
             experiment_end=self.now,
@@ -45,3 +51,15 @@ class ObserverTest(unittest.TestCase):
     def test_response_var_has_short_id(self):
         some_variable = self.observer.get_trace_variables()[0]
         self.assertTrue(some_variable.short_id)
+
+    def test_labeling_skips_variables_that_were_not_captured(self):
+        captured, missing = self.observer.get_metric_variables()[:2]
+        captured.data = pd.DataFrame({"timestamp": [self.five_min_ago, self.now]})
+        treatment = mock.MagicMock(start=self.now - 1, end=self.now + 1)
+        treatment.name = "some_treatment"
+        runner = mock.MagicMock(observer=self.observer, treatments={"some_treatment": treatment})
+
+        ExperimentRunner._label(runner)
+
+        self.assertEqual(captured.data["some_treatment"].tolist(), ["NoTreatment", "some_treatment"])
+        self.assertIsNone(missing.data)

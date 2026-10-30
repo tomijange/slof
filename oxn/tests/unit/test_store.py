@@ -1,7 +1,7 @@
 """Unit and integration tests for the HDF based data store"""
 import unittest
 
-from oxn.store import Trie, get_dataframe, consolidate_runs
+from oxn.reporting.store import Trie, get_dataframe, consolidate_runs
 
 
 class StoreTest(unittest.TestCase):

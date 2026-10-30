@@ -1,0 +1,97 @@
+# Jaeger v2 is configured through its OpenTelemetry Collector style config, not through storage values.
+jaeger:
+  jaeger:
+    resources:
+      limits:
+        memory: 2Gi
+  userconfig:
+    extensions:
+      jaeger_query:
+        storage:
+          traces: es_backend
+      jaeger_storage:
+        backends:
+          es_backend:
+            elasticsearch:
+              server_urls:
+                - http://elasticsearch.system-under-evaluation.svc.cluster.local:9200
+              indices:
+                index_prefix: jaeger
+    exporters:
+      jaeger_storage_exporter:
+        trace_storage: es_backend
+
+components:
+  flagd:
+    resources:
+      limits:
+        memory: 1Gi
+  product-catalog:
+    resources:
+      limits:
+        memory: 1Gi
+  load-generator:
+    enabled: false
+  # AI add-ons of demo 3.x. They need an LLM backend and are not part of the load the specs generate.
+  agent:
+    enabled: false
+  chatbot:
+    enabled: false
+  mcp:
+    enabled: false
+  telemetry-docs:
+    enabled: false
+  checkout:
+    resources:
+      limits:
+        memory: 1Gi
+  frontend-proxy:
+    resources:
+      limits:
+        memory: 1Gi
+  email:
+    resources:
+      limits:
+        memory: 1Gi
+opentelemetry-collector:
+  # oxn's kube_probl treatment expects a Deployment with the ConfigMap otel-collector. The chart now defaults
+  # to a DaemonSet that also collects host, kubelet and cluster metrics, which chart 0.36.4 did not do.
+  mode: deployment
+  presets:
+    hostMetrics:
+      enabled: false
+    kubeletMetrics:
+      enabled: false
+    clusterMetrics:
+      enabled: false
+    annotationDiscovery:
+      metrics:
+        enabled: false
+  config:
+    processors:
+      probabilistic_sampler:
+        sampling_percentage: 1
+        hash_seed: 22
+    service:
+      pipelines:
+        traces:
+          processors: [memory_limiter, resource_detection, resource, transform/sanitize_spans, gen_ai_normalizer, transform/redact_sensitive_data, redaction, batch, probabilistic_sampler]
+  resources:
+    limits:
+      memory: 18Gi
+prometheus:
+  server:
+    extraArgs:
+      web.enable-lifecycle: ""
+    persistentVolume:
+      enabled: true
+      storageClass: "openebs-hostpath"
+      accessModes:
+        - ReadWriteOnce
+      size: 50Gi
+    resources:
+      limits:
+        memory: 6Gi
+#opensearch:
+#  persistence:
+#    enabled: true

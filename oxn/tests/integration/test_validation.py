@@ -2,7 +2,8 @@ import unittest
 import yaml
 
 from oxn.tests.unit.spec_mocks import experiment_spec_mock
-from oxn.validation import SemanticValidator
+from oxn.core.validation import SemanticValidator, validate_syntax
+from oxn.models.experiment_spec import MetricResponseDescription, TraceResponseDescription
 
 
 class ValidationTests(unittest.TestCase):
@@ -10,7 +11,7 @@ class ValidationTests(unittest.TestCase):
     Test semantic validation of experiment specifications
     """
 
-    spec = yaml.safe_load(experiment_spec_mock)
+    spec = validate_syntax(yaml.safe_load(experiment_spec_mock))
 
     def setUp(self) -> None:
         self.validator = SemanticValidator(experiment_spec=self.spec)
@@ -29,29 +30,29 @@ class ValidationTests(unittest.TestCase):
         self.assertTrue(self.validator.label_values)
 
     def test_it_does_not_validate_wrong_name(self):
-        mock = {
-            "foobar": {
-                "metric_name": "baz",
-                "type": "metric",
-                "step": "1",
-                "left_window": "2m",
-                "right_window": "0m",
-            }
-        }
+        mock = MetricResponseDescription(
+            name="foobar",
+            metric_name="baz",
+            type="metric",
+            target="sue",
+            step=1,
+            left_window="2m",
+            right_window="0m",
+        )
         self.validator.validate_response(response=mock)
         self.assertTrue(self.validator.messages)
 
     def test_it_does_not_validate_wrong_labels(self):
-        mock = {
-            "otelcol_exporter_sent_span": {
-                "type": "metric",
-                "metric_name": "foobar",
-                "step": "1",
-                "labels": {"foo": "bar"},
-                "left_window": "2m",
-                "right_window": "0m",
-            }
-        }
+        mock = MetricResponseDescription(
+            name="otelcol_exporter_sent_span",
+            type="metric",
+            target="sue",
+            metric_name="foobar",
+            step=1,
+            labels={"foo": "bar"},
+            left_window="2m",
+            right_window="0m",
+        )
         self.assertFalse(
             self.validator.validate_metric_response_description(response=mock)
         )
@@ -61,25 +62,23 @@ class ValidationTests(unittest.TestCase):
         self.assertTrue(self.validator)
 
     def test_it_validates_existing_service_name(self):
-        mock = {
-            "frontend_traces": {
-                "type": "trace",
-                "service_name": "frontend",
-                "left_window": "2m",
-                "right_window": "0m",
-            }
-        }
+        mock = TraceResponseDescription(
+            name="frontend_traces",
+            type="trace",
+            service_name="frontend",
+            left_window="2m",
+            right_window="0m",
+        )
         self.validator.validate_response(response=mock)
         self.assertFalse(self.validator.messages)
 
     def test_it_does_not_validate_nonexisting_service_name(self):
-        mock = {
-            "foobar": {
-                "type": "trace",
-                "service_name": "barbaz",
-                "left_window": "2m",
-                "right_window": "0m",
-            }
-        }
+        mock = TraceResponseDescription(
+            name="foobar",
+            type="trace",
+            service_name="barbaz",
+            left_window="2m",
+            right_window="0m",
+        )
         self.validator.validate_trace_response_description(response=mock)
         self.assertTrue(self.validator.messages)

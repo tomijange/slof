@@ -9,8 +9,8 @@ from typing import List
 import logging
 import uuid
 
-from oxn.errors import OxnException
-from oxn.utils import humanize_utc_timestamp
+from oxn.common.errors import OxnException
+from oxn.common.utils import humanize_utc_timestamp
 from oxn.models.orchestrator import Orchestrator
 
 logger = logging.getLogger(__name__)

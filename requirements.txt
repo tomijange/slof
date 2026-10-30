@@ -40,6 +40,7 @@ joblib==1.5.1
 jupyter_client==8.6.3
 jupyter_core==5.8.1
 kiwisolver==1.4.8
+konsole==0.7.0
 kubernetes==32.0.1
 locust==2.37.9
 locust-cloud==1.23.1
@@ -80,7 +81,6 @@ pyzmq==26.4.0
 requests==2.32.3
 requests-oauthlib==2.0.0
 rsa==4.9.1
-schema==0.7.7
 scikit-learn==1.7.0
 scipy==1.15.3
 seaborn==0.13.2

@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 from requests import Session
 
-from oxn.errors import JaegerException
-from oxn.jaeger import Jaeger
+from oxn.common.errors import JaegerException
+from oxn.observability.jaeger import Jaeger
 
 warnings.simplefilter("ignore", ResourceWarning)
 

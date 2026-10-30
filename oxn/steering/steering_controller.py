@@ -1,6 +1,6 @@
 from calendar import c
+import logging
 from typing import List
-import requests
 
 from kubernetes import client, config
 from kubernetes.stream import stream
@@ -8,125 +8,59 @@ from kubernetes.client.exceptions import ApiException
 from kubernetes.client.models.v1_deployment import V1Deployment
 from kubernetes.client.models.v1_pod import V1Pod
 
-from oxn.errors import OrchestratorException
+from oxn.common.errors import OrchestratorException
+from oxn.orchestration.cluster_proxy import ClusterProxy
+
+logger = logging.getLogger(__name__)
 
 # Constants
 DEFAULT_STEERING_CONTAINER_PORT = 5000
+STEERING_REQUEST_TIMEOUT = 30
 
 class SteeringController:
 
-    def __init__(self, kube_client: client.CoreV1Api, api_client: client.ApiClient, port: int = DEFAULT_STEERING_CONTAINER_PORT):
+    def __init__(self, kube_client: client.CoreV1Api, api_client: client.ApiClient, cluster_proxy: ClusterProxy, port: int = DEFAULT_STEERING_CONTAINER_PORT):
         self.kube_client = kube_client
         self.api_client = api_client
+        self.cluster_proxy = cluster_proxy
+        self.session = cluster_proxy.session()
         self.steering_port = port
 
-    def send_tc_add_network_delay(self, pod: V1Pod, interface: str, delay_time: str, jitter: str, correlation: str):
-        command = f'tc qdisc add dev {interface} root netem delay {delay_time} {jitter} {correlation}'
+    def _send_tc(self, pod: V1Pod, command: str):
+        assert pod.metadata
+        assert pod.metadata.name is not None
+        assert pod.metadata.namespace is not None
 
-        assert pod.status
-        assert pod.status.pod_ip is not None
-
-        pod_ip = pod.status.pod_ip
-        pod_port = self.steering_port
-
-        url = f'http://{pod_ip}:{pod_port}/tc'
-        body = {'cmd': command}
-        response = requests.post(url, json=body)
+        url = self.cluster_proxy.pod_url(pod.metadata.namespace, pod.metadata.name, self.steering_port, 'tc')
+        response = self.session.post(url, json={'cmd': command}, timeout=STEERING_REQUEST_TIMEOUT)
 
         if response.status_code != 200:
             raise ApiException(status=response.status_code, reason=response.reason)
-        
+
+        # the steering container answers with 200 even if the command failed
+        result = response.json()
+        if result.get('status') != 'ok':
+            logger.error(f'Command "{command}" failed on pod {pod.metadata.name}: {result.get("message")}')
+
         return response
-    
+
+    def send_tc_add_network_delay(self, pod: V1Pod, interface: str, delay_time: str, jitter: str, correlation: str):
+        return self._send_tc(pod, f'tc qdisc add dev {interface} root netem delay {delay_time} {jitter} {correlation}')
+
     def send_tc_remove_network_delay(self, pod: V1Pod, interface: str):
-            command = f'tc qdisc del dev {interface} root netem'
-    
-            assert pod.status
-            assert pod.status.pod_ip is not None
-    
-            pod_ip = pod.status.pod_ip
-            pod_port = self.steering_port
-    
-            url = f'http://{pod_ip}:{pod_port}/tc'
-            body = {'cmd': command}
-            response = requests.post(url, json=body)
-    
-            if response.status_code != 200:
-                raise ApiException(status=response.status_code, reason=response.reason)
-            
-            return response
-        
+        return self._send_tc(pod, f'tc qdisc del dev {interface} root netem')
+
     def send_tc_add_network_loss(self, pod: V1Pod, interface: str, loss: str):
-            command = f'tc qdisc add dev {interface} root netem loss random {loss}'
-            
-            assert pod.status
-            assert pod.status.pod_ip is not None
-    
-            pod_ip = pod.status.pod_ip
-            pod_port = self.steering_port
-    
-            url = f'http://{pod_ip}:{pod_port}/tc'
-            body = {'cmd': command}
-            response = requests.post(url, json=body)
-    
-            if response.status_code != 200:
-                raise ApiException(status=response.status_code, reason=response.reason)
-            
-            return response
-        
+        return self._send_tc(pod, f'tc qdisc add dev {interface} root netem loss random {loss}')
+
     def send_tc_remove_network_loss(self, pod: V1Pod, interface: str):
-            command = f'tc qdisc del dev {interface} root netem'
-    
-            assert pod.status
-            assert pod.status.pod_ip is not None
-    
-            pod_ip = pod.status.pod_ip
-            pod_port = self.steering_port
-    
-            url = f'http://{pod_ip}:{pod_port}/tc'
-            body = {'cmd': command}
-            response = requests.post(url, json=body)
-    
-            if response.status_code != 200:
-                raise ApiException(status=response.status_code, reason=response.reason)
-            
-            return response
-        
+        return self._send_tc(pod, f'tc qdisc del dev {interface} root netem')
+
     def send_tc_add_network_corruption(self, pod: V1Pod, interface: str, percentage: str, correlation: str):
-            command = f'tc qdisc add dev {interface} root netem corrupt {percentage} {correlation}'
-            
-            assert pod.status
-            assert pod.status.pod_ip is not None
-    
-            pod_ip = pod.status.pod_ip
-            pod_port = self.steering_port
-    
-            url = f'http://{pod_ip}:{pod_port}/tc'
-            body = {'cmd': command}
-            response = requests.post(url, json=body)
-    
-            if response.status_code != 200:
-                raise ApiException(status=response.status_code, reason=response.reason)
-            
-            return response
-        
+        return self._send_tc(pod, f'tc qdisc add dev {interface} root netem corrupt {percentage} {correlation}')
+
     def send_tc_remove_network_corruption(self, pod: V1Pod, interface: str):
-            command = f'tc qdisc del dev {interface} root netem'
-    
-            assert pod.status
-            assert pod.status.pod_ip is not None
-    
-            pod_ip = pod.status.pod_ip
-            pod_port = self.steering_port
-    
-            url = f'http://{pod_ip}:{pod_port}/tc'
-            body = {'cmd': command}
-            response = requests.post(url, json=body)
-    
-            if response.status_code != 200:
-                raise ApiException(status=response.status_code, reason=response.reason)
-            
-            return response
+        return self._send_tc(pod, f'tc qdisc del dev {interface} root netem')
 
     def set_network_delay(self, pods: List[V1Pod], interface: str, delay_time: str, jitter: str, correlation: str):
         try:

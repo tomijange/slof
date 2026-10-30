@@ -34,7 +34,7 @@ import matplotlib.dates as mdates
 import matplotlib.ticker as mticker
 
 from matplotlib import pyplot as plt
-from oxn.store import get_dataframe
+from oxn.reporting.store import get_dataframe
 
 import argparse
 
