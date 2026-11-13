@@ -10,6 +10,7 @@ This fork builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legle
 | 2 | [Typed experiment specs](02-typed-specs.md) | A pydantic spec model instead of `schema` and nested dicts. Unknown keys stop the run |
 | 3 | [A deployment section in the spec](03-deployment-section.md) | Specs deploy and remove their own stack, `oxn deploy`, `oxn teardown`, `--keep-sue`. Compile-time treatments run after the deploy on Kubernetes |
 | 4 | [Reaching the cluster through the API server proxy](04-api-server-proxy.md) | `oxn` runs anywhere `kubectl` works. Failed `tc` commands are logged |
+| 5 | [`oxn setup`](05-oxn-setup.md) | One command installs OpenEBS, Prometheus and Kepler in order, instead of `setup/*.sh` |
 
 ## GOXN and now
 
@@ -22,7 +23,8 @@ What differs from GOXN today, by area. "Changed in" points to the change pages, 
 | SUE lifecycle | `run_experiment_suite.sh` runs `helm` by hand, `orchestrate()` and `teardown()` do nothing on Kubernetes | A `deployment` section in the spec, `oxn deploy` and `oxn teardown` | [3](03-deployment-section.md#what-deploy-and-teardown-do) | [Deployments](../deployments.md) |
 | Run order on Kubernetes | Compile-time treatments, then deploy | Deploy, then compile-time treatments | [3](03-deployment-section.md#changed-run-order-on-kubernetes) | [Architecture](../architecture.md#one-experiment-run) |
 | Cluster access | Direct HTTP to pod and cluster IPs, `oxn` inside the cluster network | Kubernetes API server proxy | [4](04-api-server-proxy.md#the-cluster-proxy) | [Deployments](../deployments.md#reaching-the-cluster-network) |
-| Repository layout | Values and dashboard in the root, helper scripts | `deployments/`, no helper scripts | [3](03-deployment-section.md#removed-scripts), [4](04-api-server-proxy.md#the-cluster-proxy) | [Getting started](../getting-started.md) |
+| Cluster setup | `setup/*.sh` and README commands | `oxn setup` | [5](05-oxn-setup.md#the-command) | [Getting started](../getting-started.md#prepare-the-cluster) |
+| Repository layout | Values and dashboard in the root, helper scripts | `deployments/`, no helper scripts | [3](03-deployment-section.md#removed-scripts), [4](04-api-server-proxy.md#the-cluster-proxy), [5](05-oxn-setup.md#the-command) | [Getting started](../getting-started.md) |
 
 ## Open limitations
 
@@ -58,4 +60,5 @@ When a later change makes part of an older page wrong, leave the old text, add a
 02-typed-specs
 03-deployment-section
 04-api-server-proxy
+05-oxn-setup
 ```
