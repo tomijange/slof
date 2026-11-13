@@ -19,6 +19,7 @@ SLOF builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legler. Th
 | 11 | [Specs for the current stack](11-current-stack-specs.md) | Every spec has a `deployment` section and uses the metric names of the current charts. New Experiment design page |
 | 12 | [Removal of Docker Compose support](12-remove-docker-compose.md) | Kubernetes only. The Compose orchestrator, Docker-only treatments, `--accounting` and `sue.compose` are gone |
 | 13 | [Rename to SLOF](13-rename-to-slof.md) | The project is called SLOF, with its own repository and docs site. The package and `oxn` command keep their names |
+| 14 | [Removal of the setup scripts](14-remove-setup-scripts.md) | No `setup/` folder. `oxn setup` prepares the cluster, Getting started covers installing |
 
 ## GOXN and now
 
@@ -33,7 +34,7 @@ What differs from GOXN today, by area. "Changed in" points to the change pages, 
 | SUE lifecycle | `run_experiment_suite.sh` runs `helm` by hand | A `deployment` section in every spec, `oxn deploy` and `oxn teardown` | [3](03-deployment-section.md#what-deploy-and-teardown-do), [11](11-current-stack-specs.md#deployment-sections) | [Deployments](../deployments.md#shipped-setups) |
 | Run order on Kubernetes | Compile-time treatments, then deploy | Deploy, then compile-time treatments | [3](03-deployment-section.md#changed-run-order-on-kubernetes) | [Architecture](../architecture.md#one-experiment-run) |
 | Cluster access | Direct HTTP to pod and cluster IPs, `oxn` inside the cluster network | Kubernetes API server proxy | [4](04-api-server-proxy.md#the-cluster-proxy) | [Deployments](../deployments.md#reaching-the-cluster-network) |
-| Cluster setup | `setup/*.sh` and README commands | `oxn setup` | [5](05-oxn-setup.md#the-command) | [Getting started](../getting-started.md#prepare-the-cluster) |
+| Cluster setup | `setup/*.sh` and README commands | `oxn setup`, no `setup/` folder | [5](05-oxn-setup.md#the-command), [14](14-remove-setup-scripts.md#setup-scripts) | [Getting started](../getting-started.md#prepare-the-cluster) |
 | Treatments | Kubernetes and Docker-only treatments | Kubernetes treatments only | [12](12-remove-docker-compose.md#treatments) | [Experiments](../experiments.md#treatments) |
 | Missing data | A response without data aborts the run | It is skipped with a warning | [6](06-skip-missing-responses.md#skipping-responses-without-data) | [Experiments](../experiments.md#results) |
 | Resource accounting | `--accounting` with Docker container statistics | Removed, CPU and energy come from responses | [12](12-remove-docker-compose.md#resource-accounting) | [Experiment design](../experiment-design.md#responses) |
@@ -86,4 +87,5 @@ When a later change makes part of an older page wrong, leave the old text, add a
 11-current-stack-specs
 12-remove-docker-compose
 13-rename-to-slof
+14-remove-setup-scripts
 ```
