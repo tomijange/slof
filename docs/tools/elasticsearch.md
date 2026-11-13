@@ -17,7 +17,7 @@ Use only one of the two routes in a namespace. Both create the same service.
 
 This route is an alternative to what the specs' `deployment` sections do, and no reported experiment used it. The commands were checked by rendering the charts with `helm template`, but they have not yet been run on a cluster.
 
-Elastic stopped maintaining this chart at 8.5.1 and recommends its ECK operator instead. GOXN does not use ECK, because ECK always enables security, and Jaeger connects here without credentials.
+Elastic stopped maintaining this chart at 8.5.1 and recommends its ECK operator instead. SLOF does not use ECK, because ECK always enables security, and Jaeger connects here without credentials.
 
 [OpenEBS](openebs.md) and [Prometheus](prometheus.md) must be installed first.
 

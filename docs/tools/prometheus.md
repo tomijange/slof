@@ -1,6 +1,6 @@
 # Prometheus
 
-Prometheus stores the metrics that `oxn` reads as experiment results. GOXN uses the kube-prometheus-stack chart, which also installs [Grafana](grafana.md), the Prometheus Operator, kube-state-metrics and node-exporter.
+Prometheus stores the metrics that `oxn` reads as experiment results. SLOF uses the kube-prometheus-stack chart, which also installs [Grafana](grafana.md), the Prometheus Operator, kube-state-metrics and node-exporter.
 
 | | |
 |---|---|
@@ -32,7 +32,7 @@ kubectl apply --server-side --force-conflicts \
     -f https://github.com/prometheus-operator/prometheus-operator/releases/download/v0.94.2/stripped-down-crds.yaml
 ```
 
-**Keep the release name `kube-prometheus`.** Other parts of GOXN rely on names derived from it:
+**Keep the release name `kube-prometheus`.** Other parts of SLOF rely on names derived from it:
 
 - Specs query the service `kube-prometheus-kube-prome-prometheus` and filter on `service="kube-prometheus-kube-prome-kubelet"`.
 - Prometheus only picks up a `ServiceMonitor` labelled `release: kube-prometheus`.

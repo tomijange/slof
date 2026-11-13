@@ -1,4 +1,4 @@
-project = "GOXN"
+project = "SLOF"
 author = "Joshua Bauer and Julian Legler"
 copyright = f"%Y, {author}"
 
@@ -11,5 +11,5 @@ myst_heading_anchors = 3
 myst_fence_as_directive = ["mermaid"]
 
 html_theme = "sphinx_rtd_theme"
-html_title = "GOXN"
-html_baseurl = "https://julianlegler.github.io/goxn/"
+html_title = "SLOF"
+html_baseurl = "https://tomijange.github.io/slof/"

@@ -1,8 +1,8 @@
-# GOXN
+# SLOF
 
-GOXN (**G**reen **O**bservability e**X**periment e**N**gine) is a framework for running green observability experiments and comparing design decisions. It is a fork of [OXN](https://github.com/nymphbox/oxn).
+SLOF is a framework for experiment-driven evaluation of trade-offs between service level objectives (SLOs) and sustainability. It is a fork of [GOXN](https://github.com/JulianLegler/goxn) (**G**reen **O**bservability e**X**periment e**N**gine), which in turn builds on [OXN](https://github.com/nymphbox/oxn).
 
-Experiments are YAML files, so they can be shared, versioned and repeated. GOXN automates the process from setting up the system under experiment to collecting the data and writing a report.
+Experiments are YAML files, so they can be shared, versioned and repeated. SLOF automates the process from setting up the system under experiment to collecting the data and writing a report.
 
 ## Quick start
 
@@ -22,7 +22,7 @@ This needs Python 3.10 or newer, `kubectl` and Helm. The [getting started guide]
 
 ## Documentation
 
-The documentation is published at <https://julianlegler.github.io/goxn/>. To build it locally, run `pip install -r docs/requirements.txt` and `make docs`, then open `docs/_build/html/index.html`.
+The documentation is published at <https://tomijange.github.io/slof/>. To build it locally, run `pip install -r docs/requirements.txt` and `make docs`, then open `docs/_build/html/index.html`.
 
 - [Getting started](docs/getting-started.md)
 - [Deployments](docs/deployments.md)

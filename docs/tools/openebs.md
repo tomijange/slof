@@ -33,7 +33,7 @@ helm upgrade --install openebs openebs/openebs \
     --set localpv-provisioner.hostpathClass.isDefaultClass=true
 ```
 
-The options leave only the hostpath engine, which is all GOXN needs. By default the chart also installs the LVM, ZFS and Mayastor engines, plus Loki, MinIO and Alloy. The last option makes `openebs-hostpath` the cluster's default StorageClass.
+The options leave only the hostpath engine, which is all SLOF needs. By default the chart also installs the LVM, ZFS and Mayastor engines, plus Loki, MinIO and Alloy. The last option makes `openebs-hostpath` the cluster's default StorageClass.
 
 The 3.x charts lived in the older repository `https://openebs.github.io/charts`, which stops at 3.10.0.
 

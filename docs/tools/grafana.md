@@ -1,6 +1,6 @@
 # Grafana
 
-Grafana shows dashboards for the external Prometheus, including GOXN's Kepler dashboard. `oxn` does not need it to run experiments.
+Grafana shows dashboards for the external Prometheus, including the Kepler dashboard from `deployments/dashboards/`. `oxn` does not need it to run experiments.
 
 | | |
 |---|---|

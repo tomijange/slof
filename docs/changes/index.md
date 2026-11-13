@@ -1,6 +1,6 @@
 # Changes
 
-This fork builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legler. This section lists every change since then, one page per change, and compares each one to GOXN. Read them in order: later pages build on earlier ones.
+SLOF builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legler. This section lists every change since then, one page per change, and compares each one to GOXN. Read them in order: later pages build on earlier ones.
 
 ## In order
 
@@ -18,6 +18,7 @@ This fork builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legle
 | 10 | [Documentation site](10-documentation-site.md) | A Sphinx site with guides and tool pages instead of one README |
 | 11 | [Specs for the current stack](11-current-stack-specs.md) | Every spec has a `deployment` section and uses the metric names of the current charts. New Experiment design page |
 | 12 | [Removal of Docker Compose support](12-remove-docker-compose.md) | Kubernetes only. The Compose orchestrator, Docker-only treatments, `--accounting` and `sue.compose` are gone |
+| 13 | [Rename to SLOF](13-rename-to-slof.md) | The project is called SLOF, with its own repository and docs site. The package and `oxn` command keep their names |
 
 ## GOXN and now
 
@@ -25,6 +26,7 @@ What differs from GOXN today, by area. "Changed in" points to the change pages, 
 
 | Area | GOXN | Now | Changed in | Documented in |
 |---|---|---|---|---|
+| Name and repository | GOXN, `JulianLegler/goxn` | SLOF, `tomijange/slof` | [13](13-rename-to-slof.md#name-and-links) | [Overview](../index.md) |
 | Code layout | About 25 modules side by side in `oxn/` | Packages by responsibility | [1](01-package-layout.md#packages) | [Architecture](../architecture.md#packages) |
 | Spec format | `schema` validation, unknown keys ignored, `sue.compose` required | Typed pydantic model, unknown keys rejected, no `compose` | [2](02-typed-specs.md#the-spec-model), [12](12-remove-docker-compose.md#spec) | [Experiments](../experiments.md#spec-structure) |
 | Orchestrators | `kubernetes`, with no-op deploy and teardown, and `docker-compose` | `kubernetes`, which deploys and tears down the spec's stack | [3](03-deployment-section.md#what-deploy-and-teardown-do), [12](12-remove-docker-compose.md#orchestrator) | [Deployments](../deployments.md), [Architecture](../architecture.md#one-experiment-run) |
@@ -55,7 +57,7 @@ What the changes so far leave open:
 
 Add a page to this folder with every change to the code, the specs, the deployments or the tooling:
 
-- **Name.** Number it after the last page, for example `13-short-name.md`, and title it `# 13. Short name`.
+- **Name.** Number it after the last page, for example `15-short-name.md`, and title it `# 15. Short name`.
 - **Lists.** Add it at the bottom of the [In order](#in-order) table and of the toctree below. Update the [GOXN and now](#goxn-and-now) table if the change touches one of its areas, or add a row. Update [Open limitations](#open-limitations).
 - **Perspective.** Compare to GOXN, not to the previous change, so each page reads on its own. Commit hashes and dates are not needed, the order is the number.
 
@@ -83,4 +85,5 @@ When a later change makes part of an older page wrong, leave the old text, add a
 10-documentation-site
 11-current-stack-specs
 12-remove-docker-compose
+13-rename-to-slof
 ```

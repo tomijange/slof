@@ -37,7 +37,7 @@ Use this to put load on the SUE by hand, for example while checking a dashboard.
 The release name `manual-load` keeps these resources from clashing with the `locust-master` deployment that `oxn` creates. Remove the release before running an experiment, so that it does not add load.
 
 ```bash
-kubectl create configmap goxn-locustfile \
+kubectl create configmap slof-locustfile \
     --namespace system-under-evaluation \
     --from-file=main.py=locust/locust_basic_interaction.py
 
@@ -47,8 +47,8 @@ helm repo update
 helm upgrade --install manual-load deliveryhero/locust \
     --namespace system-under-evaluation \
     --version 0.31.6 \
-    --set loadtest.name=goxn \
-    --set loadtest.locust_locustfile_configmap=goxn-locustfile \
+    --set loadtest.name=slof \
+    --set loadtest.locust_locustfile_configmap=slof-locustfile \
     --set loadtest.locust_host=http://frontend-proxy:8080
 ```
 
@@ -71,5 +71,5 @@ kubectl get pods -n system-under-evaluation -l role=locust-worker
 
 ```bash
 helm uninstall manual-load --namespace system-under-evaluation
-kubectl delete configmap goxn-locustfile --namespace system-under-evaluation
+kubectl delete configmap slof-locustfile --namespace system-under-evaluation
 ```

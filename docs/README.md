@@ -1,6 +1,6 @@
-# GOXN documentation
+# SLOF documentation
 
-Start with [Getting started](getting-started.md) if you are setting up GOXN for the first time.
+Start with [Getting started](getting-started.md) if you are setting up SLOF for the first time.
 
 | Guide                                 | Covers                                                                         |
 | ------------------------------------- | ------------------------------------------------------------------------------ |
