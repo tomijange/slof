@@ -8,6 +8,7 @@ This fork builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legle
 |---|---|---|
 | 1 | [Package layout](01-package-layout.md) | Modules in packages by responsibility, absolute imports, entry point `oxn.cli.main:main` |
 | 2 | [Typed experiment specs](02-typed-specs.md) | A pydantic spec model instead of `schema` and nested dicts. Unknown keys stop the run |
+| 3 | [A deployment section in the spec](03-deployment-section.md) | Specs deploy and remove their own stack, `oxn deploy`, `oxn teardown`, `--keep-sue`. Compile-time treatments run after the deploy on Kubernetes |
 
 ## GOXN and now
 
@@ -17,6 +18,9 @@ What differs from GOXN today, by area. "Changed in" points to the change pages, 
 |---|---|---|---|---|
 | Code layout | About 25 modules side by side in `oxn/` | Packages by responsibility | [1](01-package-layout.md#packages) | [Architecture](../architecture.md#packages) |
 | Spec format | `schema` validation, unknown keys ignored | Typed pydantic model, unknown keys rejected | [2](02-typed-specs.md#the-spec-model) | [Experiments](../experiments.md#spec-structure) |
+| SUE lifecycle | `run_experiment_suite.sh` runs `helm` by hand, `orchestrate()` and `teardown()` do nothing on Kubernetes | A `deployment` section in the spec, `oxn deploy` and `oxn teardown` | [3](03-deployment-section.md#what-deploy-and-teardown-do) | [Deployments](../deployments.md) |
+| Run order on Kubernetes | Compile-time treatments, then deploy | Deploy, then compile-time treatments | [3](03-deployment-section.md#changed-run-order-on-kubernetes) | [Architecture](../architecture.md#one-experiment-run) |
+| Repository layout | Values and dashboard in the root, helper scripts | `deployments/`, no helper scripts | [3](03-deployment-section.md#removed-scripts) | [Getting started](../getting-started.md) |
 
 ## Open limitations
 
@@ -24,7 +28,9 @@ What the changes so far leave open:
 
 | Limitation | From |
 |---|---|
+| The `recommendation_*` specs have no `deployment` section and use the old service and metric names. `experiments/test.yml` is the only spec kept up to date. | [3](03-deployment-section.md#known-limitations) |
 | Several unit tests from GOXN fail or do not import. | [1](01-package-layout.md#known-limitations) |
+| [Deployments](../deployments.md#shipped-setups) lists `experiments/debug.yml`, which was removed. | [3](03-deployment-section.md#known-limitations) |
 
 ## Writing a change page
 
@@ -48,4 +54,5 @@ When a later change makes part of an older page wrong, leave the old text, add a
 
 01-package-layout
 02-typed-specs
+03-deployment-section
 ```
