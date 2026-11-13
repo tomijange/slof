@@ -1,0 +1,44 @@
+# Overlay for small local clusters (e.g. Docker Desktop on a laptop).
+# Applied on top of values_opentelemetry_demo.yaml or values_opentelemetry_demo_persistence.yaml
+# by adding it to the `values` of the astronomy-shop release in a spec's deployment section.
+# Only shrinks memory so the SUE fits into ~8 GB;
+# use the unmodified values for experiments whose numbers you want to report.
+jaeger:
+  jaeger:
+    resources:
+      requests:
+        memory: 400Mi
+      limits:
+        memory: 400Mi
+components:
+  flagd:
+    resources:
+      limits:
+        memory: 128Mi
+  product-catalog:
+    resources:
+      limits:
+        memory: 64Mi
+  checkout:
+    resources:
+      limits:
+        memory: 64Mi
+  frontend-proxy:
+    resources:
+      limits:
+        memory: 128Mi
+  email:
+    resources:
+      limits:
+        memory: 128Mi
+opentelemetry-collector:
+  resources:
+    limits:
+      memory: 512Mi
+prometheus:
+  server:
+    persistentVolume:
+      size: 2Gi
+    resources:
+      limits:
+        memory: 512Mi
