@@ -15,6 +15,7 @@ This fork builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legle
 | 7 | [Logging](07-logging.md) | Module loggers, a coloured console format, timings for every phase |
 | 8 | [Stack versions](08-stack-versions.md) | Current charts and images, and `test.yml` uses their metric names |
 | 9 | [Repository layout](09-repository-layout.md) | Values and dashboard in `deployments/`, obsolete scripts removed, new Makefile targets |
+| 10 | [Documentation site](10-documentation-site.md) | A Sphinx site with guides and tool pages instead of one README |
 
 ## GOXN and now
 
@@ -33,6 +34,7 @@ What differs from GOXN today, by area. "Changed in" points to the change pages, 
 | Chart versions | kube-prometheus-stack 62.5.1, OpenTelemetry Demo 0.36.4, old Kepler chart | 92.16.1, 0.42.6, Kepler 0.12.0 | [8](08-stack-versions.md#summary) | [Tools](../tools/prometheus.md), [Kepler](../tools/kepler.md#metrics), [OpenTelemetry Demo](../tools/opentelemetry-demo.md) |
 | Metric names in `test.yml` | `jaeger-query`, `kepler_container_*_joules_total`, demo 1.x names | Names of the current charts | [8](08-stack-versions.md#experimentstestyml) | [Kepler](../tools/kepler.md#metrics) |
 | Repository layout | Values and dashboard in the root, helper scripts | `deployments/`, no helper scripts | [9](09-repository-layout.md#deployments), [3](03-deployment-section.md#removed-scripts), [4](04-api-server-proxy.md#the-cluster-proxy), [5](05-oxn-setup.md#the-command) | [Getting started](../getting-started.md) |
+| Documentation | One long README | Sphinx site with guides and tool pages | [10](10-documentation-site.md#pages) | [Overview](../index.md) |
 
 ## Open limitations
 
@@ -74,4 +76,5 @@ When a later change makes part of an older page wrong, leave the old text, add a
 07-logging
 08-stack-versions
 09-repository-layout
+10-documentation-site
 ```
