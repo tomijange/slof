@@ -1,6 +1,6 @@
 # Istio
 
-Istio adds a service mesh around the SUE, so that experiments can measure what a mesh costs. No shipped spec deploys it.
+Istio adds a service mesh around the SUE, so that experiments can measure what a mesh costs. `experiments/recommendation_k8_base_1m_otel_persistence_istio.yml` deploys it as part of its `deployment` section.
 
 | Release | Chart | Version | Namespace | Values |
 |---|---|---|---|---|
@@ -8,7 +8,7 @@ Istio adds a service mesh around the SUE, so that experiments can measure what a
 | `istiod` | `istio/istiod` | 1.30.7 | `istio-system` | `deployments/values/values_istiod.yaml` |
 | `istio-ingressgateway` | `istio/gateway` | 1.30.7 | `istio-system` | Chart defaults |
 
-To deploy it with an experiment, add these releases to the spec's `deployment` section.
+To deploy it with another experiment, copy that spec's `deployment` section. It sets the gateway's service to `ClusterIP`, because `helm --wait` would otherwise wait for a LoadBalancer IP, and it does not upgrade Prometheus with `values_kube_prometheus_istio.yaml`.
 
 ## Deploy with Helm
 

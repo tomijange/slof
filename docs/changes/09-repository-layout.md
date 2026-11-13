@@ -57,5 +57,5 @@ Specs and `oxn setup` reference these paths, so `oxn` has to run from the reposi
 
 | Limitation | Status |
 |---|---|
-| **`debug.yml` in the docs.** [Deployments](../deployments.md#shipped-setups) still lists `experiments/debug.yml` as a shipped setup. | Open |
+| **`debug.yml` in the docs.** [Deployments](../deployments.md#shipped-setups) still lists `experiments/debug.yml` as a shipped setup. | Resolved by [Specs for the current stack](11-current-stack-specs.md) |
 | **`debug.yml` in `.vscode/launch.json`.** The remaining debug configuration still runs `experiments/debug.yml`. | Open |

@@ -1,6 +1,6 @@
 # Experiments
 
-An experiment is a YAML file that defines what to measure (responses), what to change (treatments) and how much load to apply. Specs live in `experiments/`.
+An experiment is a YAML file that defines what to measure (responses), what to change (treatments) and how much load to apply. Specs live in `experiments/`. [Experiment design](experiment-design.md) explains what the shipped specs measure and which ones to compare.
 
 ## Running an experiment
 

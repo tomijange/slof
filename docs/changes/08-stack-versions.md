@@ -84,4 +84,4 @@ Labels changed too: `container_namespace` is now `pod_namespace`, and `node` is 
 
 | Limitation | Status |
 |---|---|
-| **Outdated specs.** The `recommendation_*` specs still use the old service and metric names, such as `jaeger-query` and the old Kepler metrics. `experiments/test.yml` is the only spec kept up to date. | Open |
+| **Outdated specs.** The `recommendation_*` specs still use the old service and metric names, such as `jaeger-query` and the old Kepler metrics. `experiments/test.yml` is the only spec kept up to date. | Resolved by [Specs for the current stack](11-current-stack-specs.md) |

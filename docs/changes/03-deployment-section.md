@@ -91,5 +91,5 @@ With the section in the spec, the spec alone says what an experiment runs on. Ev
 
 | Limitation | Status |
 |---|---|
-| **Outdated specs.** The `recommendation_*` specs have no `deployment` section. They expect the stack that `run_experiment_suite.sh` used to install. | Open |
-| **`debug.yml`.** [Deployments](../deployments.md#shipped-setups) lists `experiments/debug.yml` as a second spec with a `deployment` section, but [Repository layout](09-repository-layout.md) removes that file. `test.yml` is the only one. | Open |
+| **Outdated specs.** The `recommendation_*` specs have no `deployment` section. They expect the stack that `run_experiment_suite.sh` used to install. | Resolved by [Specs for the current stack](11-current-stack-specs.md) |
+| **`debug.yml`.** [Deployments](../deployments.md#shipped-setups) lists `experiments/debug.yml` as a second spec with a `deployment` section, but [Repository layout](09-repository-layout.md) removes that file. `test.yml` is the only one. | Resolved by [Specs for the current stack](11-current-stack-specs.md). Every spec has a `deployment` section, and [Deployments](../deployments.md) no longer lists `debug.yml` |

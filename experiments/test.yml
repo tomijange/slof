@@ -1,3 +1,17 @@
+# Short smoke test of the whole oxn pipeline: deploy, inject a treatment under load, record responses, tear down.
+# The load phase is only 6 minutes, so use it to check a cluster or a code change before a full experiment.
+#
+# SUE: OpenTelemetry Demo (chart 0.42.6) in system-under-evaluation, Jaeger keeps traces in memory.
+# Prometheus and Kepler are not part of the deployment, run `oxn setup` first.
+#
+# During the load:
+#   - 45ms +- 45ms of network delay on the recommendation pod (eth0) for 1m.
+# The commented-out treatments below are ready-made examples of the other treatment types.
+#
+# Load: Locust inside the cluster, 500 users spawned at 10/s against frontend-proxy, for 6m.
+# Responses: frontend and recommendation traces from Jaeger, CPU, Kepler energy and network bytes of the
+# recommendation pod, CPU and Kepler energy of the whole SUE, frontend p95 latency, recommendations served
+# and sampled traces.
 experiment:
   version: 0.0.1
   orchestrator: kubernetes
@@ -68,7 +82,7 @@ experiment:
         target: oxn
     - latency_frontend_95_percentile:
         type: metric
-        metric_name: histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{job="opentelemetry-demo/frontend"}[2m])) by (le))
+        metric_name: histogram_quantile(0.95, sum(rate(http_client_request_duration_seconds_bucket{job="opentelemetry-demo/frontend"}[2m])) by (le))
         left_window: 30s
         right_window: 30s
         step: 1

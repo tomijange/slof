@@ -16,6 +16,7 @@ This fork builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legle
 | 8 | [Stack versions](08-stack-versions.md) | Current charts and images, and `test.yml` uses their metric names |
 | 9 | [Repository layout](09-repository-layout.md) | Values and dashboard in `deployments/`, obsolete scripts removed, new Makefile targets |
 | 10 | [Documentation site](10-documentation-site.md) | A Sphinx site with guides and tool pages instead of one README |
+| 11 | [Specs for the current stack](11-current-stack-specs.md) | Every spec has a `deployment` section and uses the metric names of the current charts. New Experiment design page |
 
 ## GOXN and now
 
@@ -25,16 +26,18 @@ What differs from GOXN today, by area. "Changed in" points to the change pages, 
 |---|---|---|---|---|
 | Code layout | About 25 modules side by side in `oxn/` | Packages by responsibility | [1](01-package-layout.md#packages) | [Architecture](../architecture.md#packages) |
 | Spec format | `schema` validation, unknown keys ignored | Typed pydantic model, unknown keys rejected | [2](02-typed-specs.md#the-spec-model) | [Experiments](../experiments.md#spec-structure) |
-| SUE lifecycle | `run_experiment_suite.sh` runs `helm` by hand, `orchestrate()` and `teardown()` do nothing on Kubernetes | A `deployment` section in the spec, `oxn deploy` and `oxn teardown` | [3](03-deployment-section.md#what-deploy-and-teardown-do) | [Deployments](../deployments.md) |
+| Orchestrators | `kubernetes`, with no-op deploy and teardown, and `docker-compose` | `kubernetes`, which deploys and tears down the spec's stack, and `docker-compose` | [3](03-deployment-section.md#what-deploy-and-teardown-do) | [Deployments](../deployments.md), [Architecture](../architecture.md#one-experiment-run) |
+| SUE lifecycle | `run_experiment_suite.sh` runs `helm` by hand | A `deployment` section in every spec, `oxn deploy` and `oxn teardown` | [3](03-deployment-section.md#what-deploy-and-teardown-do), [11](11-current-stack-specs.md#deployment-sections) | [Deployments](../deployments.md#shipped-setups) |
 | Run order on Kubernetes | Compile-time treatments, then deploy | Deploy, then compile-time treatments | [3](03-deployment-section.md#changed-run-order-on-kubernetes) | [Architecture](../architecture.md#one-experiment-run) |
 | Cluster access | Direct HTTP to pod and cluster IPs, `oxn` inside the cluster network | Kubernetes API server proxy | [4](04-api-server-proxy.md#the-cluster-proxy) | [Deployments](../deployments.md#reaching-the-cluster-network) |
 | Cluster setup | `setup/*.sh` and README commands | `oxn setup` | [5](05-oxn-setup.md#the-command) | [Getting started](../getting-started.md#prepare-the-cluster) |
 | Missing data | A response without data aborts the run | It is skipped with a warning | [6](06-skip-missing-responses.md#skipping-responses-without-data) | [Experiments](../experiments.md#results) |
 | Logging | One uncoloured format, some modules on the root logger | Module loggers, coloured console, timings | [7](07-logging.md#console-format) | [Experiments](../experiments.md#running-an-experiment) |
 | Chart versions | kube-prometheus-stack 62.5.1, OpenTelemetry Demo 0.36.4, old Kepler chart | 92.16.1, 0.42.6, Kepler 0.12.0 | [8](08-stack-versions.md#summary) | [Tools](../tools/prometheus.md), [Kepler](../tools/kepler.md#metrics), [OpenTelemetry Demo](../tools/opentelemetry-demo.md) |
-| Metric names in `test.yml` | `jaeger-query`, `kepler_container_*_joules_total`, demo 1.x names | Names of the current charts | [8](08-stack-versions.md#experimentstestyml) | [Kepler](../tools/kepler.md#metrics) |
+| Metric names in specs | `jaeger-query`, `kepler_container_*_joules_total`, demo 1.x names | Names of the current charts | [8](08-stack-versions.md#experimentstestyml), [11](11-current-stack-specs.md#metric-names) | [Kepler](../tools/kepler.md#metrics), [Experiment design](../experiment-design.md#responses) |
+| Experiment specs | 30 s export specs leave `product-catalog` at 1 s | Fixed, every spec starts with a comment | [11](11-current-stack-specs.md#fix-in-the-30-s-export-specs) | [Experiment design](../experiment-design.md#the-specs-and-what-to-compare) |
 | Repository layout | Values and dashboard in the root, helper scripts | `deployments/`, no helper scripts | [9](09-repository-layout.md#deployments), [3](03-deployment-section.md#removed-scripts), [4](04-api-server-proxy.md#the-cluster-proxy), [5](05-oxn-setup.md#the-command) | [Getting started](../getting-started.md) |
-| Documentation | One long README | Sphinx site with guides and tool pages | [10](10-documentation-site.md#pages) | [Overview](../index.md) |
+| Documentation | One long README | Sphinx site with guides and tool pages | [10](10-documentation-site.md#pages), [11](11-current-stack-specs.md#documentation) | [Overview](../index.md) |
 
 ## Open limitations
 
@@ -42,16 +45,14 @@ What the changes so far leave open:
 
 | Limitation | From |
 |---|---|
-| The `recommendation_*` specs have no `deployment` section and use the old service and metric names. `experiments/test.yml` is the only spec kept up to date. | [3](03-deployment-section.md#known-limitations), [8](08-stack-versions.md#known-limitations) |
 | Several unit tests from GOXN fail or do not import. | [1](01-package-layout.md#known-limitations) |
-| [Deployments](../deployments.md#shipped-setups) lists `experiments/debug.yml`, which was removed. | [3](03-deployment-section.md#known-limitations), [9](09-repository-layout.md#known-limitations) |
 | The debug configuration in `.vscode/launch.json` still runs the removed `experiments/debug.yml`. | [9](09-repository-layout.md#known-limitations) |
 
 ## Writing a change page
 
 Add a page to this folder with every change to the code, the specs, the deployments or the tooling:
 
-- **Name.** Number it after the last page, for example `11-short-name.md`, and title it `# 11. Short name`.
+- **Name.** Number it after the last page, for example `13-short-name.md`, and title it `# 13. Short name`.
 - **Lists.** Add it at the bottom of the [In order](#in-order) table and of the toctree below. Update the [GOXN and now](#goxn-and-now) table if the change touches one of its areas, or add a row. Update [Open limitations](#open-limitations).
 - **Perspective.** Compare to GOXN, not to the previous change, so each page reads on its own. Commit hashes and dates are not needed, the order is the number.
 
@@ -77,4 +78,5 @@ When a later change makes part of an older page wrong, leave the old text, add a
 08-stack-versions
 09-repository-layout
 10-documentation-site
+11-current-stack-specs
 ```

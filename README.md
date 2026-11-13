@@ -27,7 +27,9 @@ The documentation is published at <https://julianlegler.github.io/goxn/>. To bui
 - [Getting started](docs/getting-started.md)
 - [Deployments](docs/deployments.md)
 - [Experiments](docs/experiments.md)
+- [Experiment design](docs/experiment-design.md): what the shipped experiments measure and which to compare
 - [Architecture](docs/architecture.md)
+- [Changes](docs/changes/index.md): what changed compared to GOXN, and why, one page per change
 - [Tool guides](docs/README.md#tools): how to deploy OpenEBS, Prometheus, Grafana, Kepler, the OpenTelemetry Demo, the OpenTelemetry Collector, Jaeger, Elasticsearch, Istio and Locust with Helm
 
 ## Repository layout

@@ -7,6 +7,7 @@ Start with [Getting started](getting-started.md) if you are setting up GOXN for 
 | [Getting started](getting-started.md) | Installing `oxn`, preparing a cluster, running a first experiment              |
 | [Deployments](deployments.md)         | The `deployment` section of a spec, deploying and tearing down the stack       |
 | [Experiments](experiments.md)         | Experiment specs, treatments, the `oxn` command, reports                       |
+| [Experiment design](experiment-design.md) | What the shipped experiments measure, how a run is timed, which specs to compare |
 | [Architecture](architecture.md)       | How the `oxn` modules work together during a run                               |
 | [Changes](changes/index.md)           | Every change since GOXN, one page each, compared to GOXN                       |
 

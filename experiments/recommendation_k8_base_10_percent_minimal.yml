@@ -1,18 +1,41 @@
+# Trace sampling at 10 %, recording only cumulative energy, network and storage counters.
+#
+# SUE: OpenTelemetry Demo (chart 0.42.6) in system-under-evaluation, Jaeger keeps traces in memory.
+# Prometheus and Kepler are not part of the deployment, run `oxn setup` first.
+#
+# Before the load starts:
+#   - The collector samples 10 % of traces (probabilistic head sampling, hash seed 22).
+# During the load:
+#   - An empty treatment observes the SUE for 60m.
+#
+# Load: Locust inside the cluster, 500 users spawned at 50/s against frontend-proxy, for 70m.
+# Responses: only three cumulative ones, Kepler energy per container, network bytes sent and storage I/O of
+# the SUE.
 experiment:
   version: 0.0.1
   orchestrator: kubernetes
+  deployment:
+    namespaces:
+      - name: system-under-evaluation
+    steps:
+      - helm:
+          release: astronomy-shop
+          chart: opentelemetry-demo
+          repo: https://open-telemetry.github.io/opentelemetry-helm-charts
+          version: 0.42.6
+          namespace: system-under-evaluation
+          values: [deployments/values/values_opentelemetry_demo.yaml]
   services:
-    jaeger: 
-      name: jaeger-query
+    jaeger:
+      name: jaeger
       namespace: system-under-evaluation
-    prometheus: [
-      { name: prometheus, namespace: system-under-evaluation, target: sue },
-      { name: kube-prometheus-kube-prome-prometheus, namespace: oxn-external-monitoring, target: oxn },
-    ]
+    prometheus:
+      - {name: prometheus, namespace: system-under-evaluation, target: sue}
+      - {name: kube-prometheus-kube-prome-prometheus, namespace: oxn-external-monitoring, target: oxn}
   responses:
     - pods_kepler_joules_all_absolute:
         type: metric
-        metric_name: sum by (container_name, container_namespace) (kepler_container_joules_total{container_namespace=~"system-under-evaluation"})
+        metric_name: sum by (container_name, container_namespace) (label_replace(kepler_container_cpu_joules_total{zone=~"package|dram"} * on(pod_id) group_left(pod_namespace) group by (pod_id, pod_namespace) (kepler_pod_cpu_joules_total{pod_namespace=~"system-under-evaluation"}), "container_namespace", "$1", "pod_namespace", "(.*)"))
         left_window: 420s
         right_window: 120s
         step: 30
@@ -34,27 +57,25 @@ experiment:
   treatments:
     - probabilistic_head_sampling_rate:
         action: kube_probl
-        params: {
-          sampling_percentage: 10.0,
-          hash_seed: 22,
-          }
+        params:
+          sampling_percentage: 10.0
+          hash_seed: 22
     - empty_treatment:
         action: empty
-        params: {
-          duration: 60m,
-        }
+        params:
+          duration: 60m
   sue:
     compose: opentelemetry-demo/docker-compose.yml
     exclude: [loadgenerator]
-    required: [{namespace: system-under-evaluation, name: prometheus}] 
+    required:
+      - {namespace: system-under-evaluation, name: prometheus}
   loadgen:
     run_time: 70m
     max_users: 500
     spawn_rate: 50
-    locust_files: [
-      { path: locust/locust_basic_interaction.py },
-      { path: locust/locust_otel_demo.py },
-      ]
+    locust_files:
+      - {path: locust/locust_basic_interaction.py}
+      - {path: locust/locust_otel_demo.py}
     target:
       name: frontend-proxy
       namespace: system-under-evaluation

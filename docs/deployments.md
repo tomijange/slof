@@ -4,14 +4,15 @@ The `deployment` section of an experiment spec describes the SUE and its observa
 
 ## Shipped setups
 
-Two specs in `experiments/` have a `deployment` section:
+Every spec in `experiments/` has a `deployment` section, in one of three setups. A comment at the top of each spec says what it measures and which setup it uses.
 
-| Spec | Deploys |
-|---|---|
-| `test.yml` | The SUE with in-memory Jaeger. Prometheus and Kepler stay in place, so run `oxn setup` first |
-| `debug.yml` | Prometheus and the SUE with in-memory Jaeger. Its teardown also removes Prometheus |
+| Setup | Specs | Deploys |
+|---|---|---|
+| In-memory Jaeger | `test.yml`, `recommendation_*` without `persistence` in the name | The SUE with `values_opentelemetry_demo.yaml` |
+| Elasticsearch | `recommendation_*_persistence*` | `k8s/elasticsearch/`, then the SUE with `values_opentelemetry_demo_persistence.yaml` |
+| Istio | `recommendation_k8_base_1m_otel_persistence_istio.yml` | Istio in `istio-system`, sidecar injection on `system-under-evaluation`, then the Elasticsearch setup |
 
-The `recommendation_*` specs have no `deployment` section, so they expect the SUE to be running already. They also still use service and metric names from older chart versions, such as `jaeger-query`, so update them before you run them against the versions deployed here.
+None of them deploys Prometheus or Kepler, so run `oxn setup` first.
 
 Helm values live in `deployments/values/`, including the ones for the Elasticsearch persistence setup.
 
