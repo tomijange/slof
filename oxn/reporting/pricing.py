@@ -24,7 +24,7 @@ import psutil
 from docker import DockerClient
 from docker.models.containers import Container
 
-logger = logging.Logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class Accountant:

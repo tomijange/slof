@@ -24,11 +24,11 @@ from kubernetes.client.models.v1_deployment import V1Deployment
 
 from python_on_whales import DockerClient
 
-from .kubernetes_orchestrator import KubernetesOrchestrator
+from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 
-from .errors import OrchestratorException, OxnException, OrchestratorResourceNotFoundException
-from oxn.utils import (
+from oxn.common.errors import OrchestratorException, OxnException, OrchestratorResourceNotFoundException
+from oxn.common.utils import (
     time_string_to_seconds,
     validate_time_string,
     time_string_format_regex,
@@ -587,7 +587,7 @@ class KubernetesCorruptPacketTreatment(Treatment):
         time.sleep(duration)
         
 
-        logging.info(
+        logger.info(
             f"Injected packet corruption into deployment {deployment.metadata.name}. Waiting for {duration}s."
         )
         time.sleep(duration)
@@ -793,14 +793,14 @@ class KubernetesMetricsExportIntervalTreatment(Treatment):
             environment_variable_value=str(int(self.interval_ms)),
         )
         
-        logging.info(f"Environment variable '{self.env_name} set to '{self.interval_ms}'ms for the deployment '{self.deployment.metadata.name}'.")
+        logger.info(f"Environment variable '{self.env_name} set to '{self.interval_ms}'ms for the deployment '{self.deployment.metadata.name}'.")
 
         time.sleep(3)
 
         for x in range(0, 10):
             if self.orchestrator.is_deployment_ready(self.deployment):
                 break
-            logging.info(f"Waiting for deployment {self.deployment.metadata.name} to be ready")
+            logger.info(f"Waiting for deployment {self.deployment.metadata.name} to be ready")
             time.sleep(2)
 
 
@@ -817,7 +817,7 @@ class KubernetesMetricsExportIntervalTreatment(Treatment):
             environment_variable_name=self.env_name,
             environment_variable_value=self.init_env_value,
         )
-        logging.info(f"Environment variable '{self.env_name} reset for deployment '{self.deployment.metadata.name}' to initial value.") """
+        logger.info(f"Environment variable '{self.env_name} reset for deployment '{self.deployment.metadata.name}' to initial value.") """
 
     def params(self) -> dict:
         return {
@@ -986,7 +986,7 @@ class KubernetesProbabilisticHeadSamplingTreatment(Treatment):
         
         self.initial_sampling_percentage, self.initial_hash_seed = self.orchestrator.get_otel_collector_probabilistic_sampling_values()
         self.orchestrator.set_otel_collector_probabilistic_sampling_values(sampling_percentage=self.config.get("sampling_percentage"), hash_seed=self.config.get("hash_seed"))
-        logging.info(f"Set otel collectors probabilistic sampling rate {self.initial_sampling_percentage} -> {self.config.get('sampling_percentage')} and hash seed {self.initial_hash_seed} -> {self.config.get('hash_seed')}")
+        logger.info(f"Set otel collectors probabilistic sampling rate {self.initial_sampling_percentage} -> {self.config.get('sampling_percentage')} and hash seed {self.initial_hash_seed} -> {self.config.get('hash_seed')}")
 
 
          # TODO: it seams as there might be a way to reload config maps without restarting the pods in some cases. This should be investigated (https://kubernetes.io/docs/concepts/configuration/configmap/#mounted-configmaps-are-updated-automatically)
@@ -999,7 +999,7 @@ class KubernetesProbabilisticHeadSamplingTreatment(Treatment):
         assert isinstance(self.orchestrator, KubernetesOrchestrator)
 
         """  self.orchestrator.set_otel_collector_probabilistic_sampling_values(sampling_percentage=self.initial_sampling_percentage, hash_seed=self.initial_hash_seed)
-        logging.info(f"Reset otel collectors probabilistic sampling rate  {self.config.get('sampling_percentage')} -> {self.initial_sampling_percentage} and hash seed to {self.config.get('hash_seed')} -> {self.initial_hash_seed}")
+        logger.info(f"Reset otel collectors probabilistic sampling rate  {self.config.get('sampling_percentage')} -> {self.initial_sampling_percentage} and hash seed to {self.config.get('hash_seed')} -> {self.initial_hash_seed}")
 
          # TODO: it seams as there might be a way to reload config maps without restarting the pods in some cases. This should be investigated (https://kubernetes.io/docs/concepts/configuration/configmap/#mounted-configmaps-are-updated-automatically)
         self.orchestrator.restart_pods_of_deployment(self.deployment) """
@@ -1026,7 +1026,7 @@ class KubernetesProbabilisticHeadSamplingTreatment(Treatment):
                     f"Parameter {key} has to be between 0 and 100 for {self.treatment_type}"
                 )
             if key == "sampling_percentage" and self.config[key] > 20:
-               logging.warning(f"Sampling percentage is set to {self.config[key]}. High sampling rates can lead to high costs and performance issues and crashes.")
+               logger.warning(f"Sampling percentage is set to {self.config[key]}. High sampling rates can lead to high costs and performance issues and crashes.")
         return not self.messages
 
     def _transform_params(self) -> None:
@@ -1740,7 +1740,7 @@ class DeploymentScaleTreatment(Treatment):
             self.messages.append(f"Failed to scale deployment {self.deployment.metadata.name} to {scale_to}")
             return
         # TODO: Wait until scaling is done
-        logging.info(f"Deployment {self.deployment.metadata.name} scaled to {scale_to}")
+        logger.info(f"Deployment {self.deployment.metadata.name} scaled to {scale_to}")
 
     def clean(self) -> None:
         """
@@ -1767,7 +1767,7 @@ class DeploymentScaleTreatment(Treatment):
         if response is None:
             self.messages.append(f"Failed to scale deployment {self.deployment.metadata.name} to {self.replicas_before}")
             return
-        logging.info(f"Deployment {self.deployment.metadata.name} scaled to {self.replicas_before}")
+        logger.info(f"Deployment {self.deployment.metadata.name} scaled to {self.replicas_before}")
 
     def params(self) -> dict:
         return {
@@ -2120,7 +2120,7 @@ class KubernetesPrometheusIntervalTreatment(Treatment):
         
         self.initial_interval, self.initial_evaluation_interval, self.inital_scrape_timeout = self.orchestrator.get_prometheus_scrape_values()
         self.orchestrator.set_prometheus_scrape_values(scrape_interval=self.config.get("interval"), evaluation_interval=self.config.get("evaluation_interval"), scrape_timeout=self.config.get("scrape_timeout"))
-        logging.info(f"Set prometheus scrape interval to {self.config.get('interval')}, evaluation interval to {self.config.get('evaluation_interval')} and scrape timeout to {self.config.get('scrape_timeout')}")
+        logger.info(f"Set prometheus scrape interval to {self.config.get('interval')}, evaluation interval to {self.config.get('evaluation_interval')} and scrape timeout to {self.config.get('scrape_timeout')}")
 
         self.orchestrator.restart_pods_of_deployment(self.deployment)
 
@@ -2131,7 +2131,7 @@ class KubernetesPrometheusIntervalTreatment(Treatment):
         
         assert isinstance(self.orchestrator, KubernetesOrchestrator)
         self.orchestrator.set_prometheus_scrape_values(scrape_interval=self.initial_interval, evaluation_interval=self.initial_evaluation_interval, scrape_timeout=self.inital_scrape_timeout)
-        logging.info(f"Set prometheus scrape interval back to {self.initial_interval}, evaluation interval back to {self.initial_evaluation_interval} and scrape timeout back to {self.inital_scrape_timeout}")
+        logger.info(f"Set prometheus scrape interval back to {self.initial_interval}, evaluation interval back to {self.initial_evaluation_interval} and scrape timeout back to {self.inital_scrape_timeout}")
 
         self.deployment = self.orchestrator.get_deployment("system-under-evaluation", "app.kubernetes.io/name", "prometheus")
         self.orchestrator.restart_pods_of_deployment(self.deployment)

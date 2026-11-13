@@ -4,12 +4,12 @@ from unittest import mock
 from unittest.mock import patch
 
 
-from oxn.treatments import (
+from oxn.core.treatments import (
     PrometheusIntervalTreatment,
     TailSamplingTreatment,
     StressTreatment,
 )
-from oxn.errors import OxnException
+from oxn.common.errors import OxnException
 
 
 class PrometheusScrapeTest(unittest.TestCase):

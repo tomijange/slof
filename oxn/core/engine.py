@@ -6,21 +6,24 @@ Connection: Central component that coordinates between treatments, load generati
  """
 
 import logging
-import schema
+import time
+from typing import Optional
+
 import yaml
 
-from .runner import ExperimentRunner
-from .docker_orchestration import DockerComposeOrchestrator
-from .kubernetes_orchestrator import KubernetesOrchestrator
-from .report import Reporter
-from .store import write_dataframe
-from .config_load_generator import ConfigLoadGenerator
-from .file_load_generator import LocustFileLoadgenerator
-from .locust_kubernetes import LocustKubernetesLoadgenerator
-from .utils import utc_timestamp
-from .validation import syntactic_schema
-from .context import Context
-from .errors import OxnException, OrchestrationException
+from oxn.core.runner import ExperimentRunner
+from oxn.orchestration.docker_orchestration import DockerComposeOrchestrator
+from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
+from oxn.reporting.report import Reporter
+from oxn.reporting.store import write_dataframe
+from oxn.loadgen.config_load_generator import ConfigLoadGenerator
+from oxn.loadgen.file_load_generator import LocustFileLoadgenerator
+from oxn.loadgen.locust_kubernetes import LocustKubernetesLoadgenerator
+from oxn.common.utils import utc_timestamp
+from oxn.core.validation import load_experiment_specification
+from oxn.core.context import Context
+from oxn.common.errors import OxnException, OrchestrationException
+from oxn.models.experiment_spec import ExperimentSpec
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +39,7 @@ class Engine:
         assert configuration_path is not None, "Configuration path must be specified"
         self.config = configuration_path
         """The path to the configuration file for this engine"""
-        self.spec = None
+        self.spec: Optional[ExperimentSpec] = None
         """The loaded experiment specification"""
         self.report_path = report_path
         """The path to write the experiment report to"""
@@ -58,26 +61,10 @@ class Engine:
         self.sue_running = False
         """Status of the sue"""
 
-    def read_experiment_specification(self):
-        """Read the experiment specification file and confirm that its valid yaml"""
-        with open(self.config, "r") as fp:
-            contents = fp.read()
-            try:
-                self.spec = yaml.safe_load(contents)
-            except yaml.YAMLError as e:
-                raise OxnException(
-                    message="Provided experiment spec is not valid YAML",
-                    explanation=str(e),
-                )
-
-    def validate_syntax(self):
-        """Validate the specification syntactically"""
-        try:
-            syntactic_schema.validate(data=self.spec)
-        except schema.SchemaError as e:
-            raise OxnException(
-                message="Can't validate experiment spec", explanation=str(e)
-            )
+    def load_experiment_specification(self):
+        """Read the experiment specification file and validate it syntactically"""
+        self.spec = load_experiment_specification(self.config)
+        logger.debug(f"Experiment specification {self.config} is valid")
 
     def run(
         self,
@@ -85,29 +72,23 @@ class Engine:
         orchestration_timeout=None,
         randomize=False,
         accounting=False,
+        keep_sue=False,
     ):
         """Run an experiment n times"""
         assert runs is not None, "Number of runs must be specified"
         logger.info(f"Running experiment {self.config} for {runs} times")
         for idx in range(runs):
             logger.info(f"Experiment run {idx + 1} of {runs}")
+            run_start = time.monotonic()
             assert self.spec
-            assert self.spec["experiment"]
-            assert self.spec["experiment"]["orchestrator"]
-            if self.spec["experiment"]["orchestrator"] == "docker-compose":
+            if self.spec.experiment.orchestrator == "docker-compose":
                 self.orchestrator = DockerComposeOrchestrator(
                     experiment_config=self.spec,
                 )
-            elif self.spec["experiment"]["orchestrator"] == "kubernetes": 
+            else:
                 self.orchestrator = KubernetesOrchestrator(
                     experiment_config=self.spec,
                 )
-            else:
-                raise OxnException(
-                    message="Unknown orchestrator",
-                    explanation=f"Orchestrator {self.spec['experiment']['orchestrator']} is not supported",
-                )
-            self.generator = LocustKubernetesLoadgenerator(orchestrator=self.orchestrator, config=self.spec)
             names = []
             """ (
                 self.orchestrator.translate_compose_names(
@@ -124,18 +105,34 @@ class Engine:
                 accountant_names=names,
                 orchestrator=self.orchestrator,
             )
-            self.runner.execute_compile_time_treatments()
-            self.orchestrator.orchestrate()
+            logger.info(f"Run id is {self.runner.short_id}")
+            # Kubernetes treatments patch the running SUE, Docker Compose treatments change what gets built
+            deploy_first = self.spec.experiment.orchestrator == "kubernetes"
+            if not deploy_first:
+                self.runner.execute_compile_time_treatments()
+            try:
+                self.orchestrator.orchestrate()
+            except OxnException:
+                if not deploy_first:
+                    self.runner.clean_compile_time_treatments()
+                if not keep_sue:
+                    self.orchestrator.teardown()
+                raise
+            # from here on main() tears down the SUE if anything goes wrong
+            self.sue_running = True
+            if deploy_first:
+                self.runner.execute_compile_time_treatments()
             if not self.orchestrator.ready(expected_services=None, timeout=orchestration_timeout):
                 self.runner.clean_compile_time_treatments()
-                self.orchestrator.teardown()
                 raise OrchestrationException(
                     message="Error while building the sue",
                     explanation=f"Could not build the sue within {orchestration_timeout}",
                 )
-            self.sue_running = True
-            logger.info("Started sue")
+            logger.info(f"Started sue after {time.monotonic() - run_start:.0f}s")
+            # resolves the address of the load target, so the SUE has to exist already
+            self.generator = LocustKubernetesLoadgenerator(orchestrator=self.orchestrator, config=self.spec)
             for treatment in self.runner.treatments.values():
+                logger.debug(f"Checking preconditions of treatment {treatment.name}")
                 if not treatment.preconditions():
                     raise OxnException(
                         message=f"Error while checking preconditions for treatment {treatment.name} which is class {treatment.__class__}",
@@ -156,16 +153,16 @@ class Engine:
             self.loadgen_running = False
             logger.info("Stopped load generation")
             for _, response in self.runner.observer.variables().items():
+                if response.data is None:
+                    logger.warning(f"Skipping {response.name}, no data was captured")
+                    continue
                 write_dataframe(
                     dataframe=response.data,
                     experiment_key=self.runner.config_filename,
                     run_key=self.runner.short_id,
                     response_key=response.name,
                 )
-                logger.debug(
-                    f"Experiment {self.runner.config_filename}: DataFrame: {len(response.data)} rows"
-                )
-                logger.info(f"Wrote {response.name} to store")
+                logger.info(f"Wrote {response.name} with {len(response.data)} rows to store")
                 if self.report_path:
                     for _, treatment in self.runner.treatments.items():
                         self.reporter.gather_interaction(
@@ -190,10 +187,10 @@ class Engine:
                     if accounting:
                         self.reporter.add_accountant_data(runner=self.runner)
                         logger.debug("Added accounting data")
-            self.orchestrator.teardown()
-            logger.info("Stopped sue")
+            if not keep_sue:
+                self.orchestrator.teardown()
+                logger.info("Stopped sue")
             self.sue_running = False
-            logger.info(f"Experiment run {idx + 1} of {runs} completed")
+            logger.info(f"Experiment run {idx + 1} of {runs} completed after {time.monotonic() - run_start:.0f}s")
         if self.report_path:
             self.reporter.dump_report_data()
-            logger.debug("Wrote report data to file")

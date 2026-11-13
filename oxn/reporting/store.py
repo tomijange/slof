@@ -11,7 +11,7 @@ import warnings
 
 import pandas as pd
 from typing import List
-from .settings import STORAGE_NAME, TRIE_NAME
+from oxn.common.settings import STORAGE_NAME, TRIE_NAME
 
 # silence warning that we cant use hex strings as key names
 # we don't want table accessing by dot notation

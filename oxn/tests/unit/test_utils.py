@@ -1,9 +1,9 @@
 import unittest
 from datetime import datetime
 
-from oxn.utils import time_string_to_seconds, defer_cleanup
-from oxn.utils import to_microseconds, to_milliseconds
-from oxn.utils import utc_timestamp, humanize_utc_timestamp
+from oxn.common.utils import time_string_to_seconds, defer_cleanup
+from oxn.common.utils import to_microseconds, to_milliseconds
+from oxn.common.utils import utc_timestamp, humanize_utc_timestamp
 
 
 class UtilsTest(unittest.TestCase):

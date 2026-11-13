@@ -15,8 +15,9 @@ import python_on_whales
 from python_on_whales import DockerClient
 from docker.errors import NotFound
 from yaml import compose
-from .errors import OrchestrationException
+from oxn.common.errors import OrchestrationException
 from oxn.models.orchestrator import Orchestrator  # Import the abstract base class
+from oxn.models.experiment_spec import ExperimentSpec
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +31,10 @@ class DockerComposeOrchestrator(Orchestrator):
     for scripting around docker compose and docker-py for everything else.
     """
 
-    def __init__(self, experiment_config=None):
+    def __init__(self, experiment_config: Optional[ExperimentSpec] = None):
         self.compose_client: Optional[DockerClient] = None
         self.docker_client = None
-        self.experiment_config: dict = experiment_config
+        self.experiment_config = experiment_config
         self.docker_compose_path: str = ""
         self.docker_compose_yml: dict = {}
         self.docker_service_names = set()
@@ -53,9 +54,9 @@ class DockerComposeOrchestrator(Orchestrator):
 
     def _validate_sue(self):
         """Validate the sue section of an experiment spec"""
-        sue_section = self.experiment_config["experiment"]["sue"]
+        sue_section = self.experiment_config.experiment.sue
         # check that the compose file exists
-        compose_path = sue_section["compose"]
+        compose_path = sue_section.compose
         compose_file = Path(compose_path)
         if not compose_file.is_file():
             self.messages.append("Specified compose file does not exist")
@@ -63,8 +64,8 @@ class DockerComposeOrchestrator(Orchestrator):
         try:
             compose_config = self.compose_client.compose.config(return_json=False)
             # check that the provided service names in include exist
-            included = sue_section.get("include", [])
-            excluded = sue_section.get("exclude", [])
+            included = sue_section.include
+            excluded = sue_section.exclude
             if included:
                 for service_name in included:
                     if service_name not in compose_config.services.keys():
@@ -87,16 +88,10 @@ class DockerComposeOrchestrator(Orchestrator):
             )
 
     def _read_orchestration_section(self):
-        docker_compose_path = self.experiment_config["experiment"]["sue"]["compose"]
-        excluded_services = (
-            self.experiment_config["experiment"]["sue"].get("exclude") or []
-        )
-        included_services = (
-            self.experiment_config["experiment"]["sue"].get("include") or []
-        )
-        self.exclude = excluded_services
-        self.include = included_services
-        self.docker_compose_path = docker_compose_path
+        sue_section = self.experiment_config.experiment.sue
+        self.exclude = sue_section.exclude
+        self.include = sue_section.include
+        self.docker_compose_path = sue_section.compose
 
     def _read_service_names(self):
         config = self.compose_client.compose.config(return_json=False)
@@ -229,7 +224,7 @@ class DockerComposeOrchestrator(Orchestrator):
         #self.orchestrator.execute_console_command(service, command)
         #container = self.client.containers.get(container_id=service)
         #status_code, _ = container.exec_run(cmd=command)
-        logging.info("execute_console_command noop implementation for service %s with command %s", service, command)
+        logger.info("execute_console_command noop implementation for service %s with command %s", service, command)
         return -1, "noop"
 
     def get_address_for_service(self, service: str) -> str:

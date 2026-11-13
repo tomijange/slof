@@ -6,19 +6,25 @@ Connection: Used by the Engine to ensure the experiment configuration is correct
 Module to handle validation of experiment specifications"""
 from typing import Set, List
 
-import schema
+import pydantic
+import yaml
 
-from .models import orchestrator
+from oxn.models import orchestrator
+from oxn.models.experiment_spec import (
+    ExperimentSpec,
+    MetricResponseDescription,
+    TraceResponseDescription,
+)
 
-from .errors import OxnException
-from .jaeger import Jaeger
-from .prometheus import Prometheus
+from oxn.common.errors import OxnException
+from oxn.observability.jaeger import Jaeger
+from oxn.observability.prometheus import Prometheus
 
 
 class SemanticValidator:
     """Semantic validation for experiment specifications"""
 
-    def __init__(self, experiment_spec: dict):
+    def __init__(self, experiment_spec: ExperimentSpec):
         self.experiment_spec = experiment_spec
         """The experiment specification to validate"""
         self.prometheus = Prometheus()
@@ -101,24 +107,15 @@ class SemanticValidator:
             if not self._validate_label_value(k, v):
                 self.messages.append(f"Prometheus does not recognize label value {v} for label {k}")
 
-    def validate_metric_response_description(self, response: dict) -> None:
+    def validate_metric_response_description(self, response: MetricResponseDescription) -> None:
         """Validate a single metric response variable description"""
-        rvar_name = next(iter(response))
-        rvar = response[rvar_name]
-        metric_name = rvar["metric_name"]
-        try:
-            rvar_labels = response[rvar_name]["labels"]
-        except KeyError:
-            rvar_labels = {}
-        self._validate_metric_name(metric_name),
-        self._validate_labels(rvar_labels),
+        self._validate_metric_name(response.metric_name),
+        self._validate_labels(response.labels),
 
-    def validate_trace_response_description(self, response: dict):
+    def validate_trace_response_description(self, response: TraceResponseDescription):
         """Validate a single trace response description from an experiment specification"""
-        rvar_name = next(iter(response))
-        service_name = response[rvar_name]["service_name"]
-        if service_name not in self.service_names:
-            self.messages.append(f"Jaeger does not know service name {rvar_name}")
+        if response.service_name not in self.service_names:
+            self.messages.append(f"Jaeger does not know service name {response.name}")
 
     def validate_treatment(self, treatment_description: dict):
         """
@@ -126,25 +123,21 @@ class SemanticValidator:
         """
         raise NotImplementedError
 
-    def validate_response(self, response: dict):
+    def validate_response(self, response: MetricResponseDescription | TraceResponseDescription):
         """Validate a response variable"""
-        rvar_name = next(iter(response))
-        rvar_type = response[rvar_name]["type"]
-        # trace/metric is already validated by syntax schema
-        if rvar_type == "metric":
+        # trace/metric is already validated by the spec model
+        if response.type == "metric":
             self.validate_metric_response_description(response=response)
-        if rvar_type == "trace":
+        if response.type == "trace":
             self.validate_trace_response_description(response=response)
 
     def validate_responses(self):
         """Validate the response section in the specification"""
-        responses = self.experiment_spec["experiment"]["responses"]
-        for response in responses:
+        for response in self.experiment_spec.experiment.responses:
             self.validate_response(response=response)
 
     def validate_treatments(self):
-        treatments = self.experiment_spec["experiment"]["treatments"]
-        for treatment in treatments:
+        for treatment in self.experiment_spec.experiment.treatments:
             self.validate_treatment(treatment_description=treatment)
 
     def validate(self):
@@ -160,84 +153,29 @@ class SemanticValidator:
             )
 
 
-metric_response_schema = {
-    str: {
-        "target": str,
-        "metric_name": str,
-        "type": "metric",
-        "step": int,
-        "left_window": str,
-        "right_window": str,
-        schema.Optional("labels"): {schema.Optional(str): schema.Optional(str)},
-    }
-}
-"""Schema to validate metric responses syntactically"""
+def read_experiment_specification(path: str) -> dict:
+    """Read an experiment specification file and confirm that its valid yaml"""
+    with open(path, "r") as fp:
+        contents = fp.read()
+        try:
+            return yaml.safe_load(contents)
+        except yaml.YAMLError as e:
+            raise OxnException(
+                message="Provided experiment spec is not valid YAML",
+                explanation=str(e),
+            )
 
-trace_response_schema = {
-    str: {
-        "type": "trace",
-        "service_name": str,
-        "left_window": str,
-        "right_window": str,
-        schema.Optional("limit"): int,
-    }
-}
-"""Schema to validate trace responses syntactically"""
 
-syntactic_schema = schema.Schema(
-    {
-        "experiment": {
-            "version": str,
-            "orchestrator": str,
-            schema.Optional("services"): {
-                "jaeger": {
-                    "name": str,
-                    "namespace": str,
-                },
-                # prometheus is a list containing multiple dicts with the paramters name, namespace and target
-                "prometheus": [
-                    {
-                        "name": str,
-                        "namespace": str,
-                        "target": str,
-                    }
-                ],
-                
-            },
-            "responses": [
-                schema.Or(metric_response_schema, trace_response_schema),
-            ],
-            schema.Optional("treatments"): [
-                {
-                    str: {
-                        "action": str,
-                        "params": dict,
-                    }
-                }
-            ],
-            "sue": {
-                "compose": str,
-                schema.Optional("exclude"): list[str],
-                schema.Optional("include"): list[str],
-                schema.Optional("required"): [
-                    {
-                        "namespace": str,
-                        "name": str,
-                    }
-                ]
-            },
-            "loadgen": {
-                "run_time": str,
-                schema.Optional("max_users"): int,
-                schema.Optional("spawn_rate"): int,
-                schema.Optional("locust_files"): list[str],
-                schema.Optional("target"): {
-                    "name": str,
-                    "namespace": str,
-                    "port": int,
-                },
-            },
-        },
-    }
-)
-"""Schema to validate an experiment specification syntactically"""
+def validate_syntax(experiment_spec: dict) -> ExperimentSpec:
+    """Validate an experiment specification syntactically and return its typed model"""
+    try:
+        return ExperimentSpec.model_validate(experiment_spec)
+    except pydantic.ValidationError as e:
+        raise OxnException(
+            message="Can't validate experiment spec", explanation=str(e)
+        )
+
+
+def load_experiment_specification(path: str) -> ExperimentSpec:
+    """Read an experiment specification file and validate it syntactically"""
+    return validate_syntax(read_experiment_specification(path))

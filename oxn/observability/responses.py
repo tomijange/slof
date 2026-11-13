@@ -9,12 +9,13 @@ import datetime
 import numpy as np
 import pandas as pd
 
-from .models.orchestrator import Orchestrator
-import oxn.utils as utils
-from .errors import PrometheusException, JaegerException
-from .models.response import ResponseVariable
-from .jaeger import Jaeger
-from .prometheus import Prometheus
+from oxn.models.experiment_spec import MetricResponseDescription, TraceResponseDescription
+from oxn.models.orchestrator import Orchestrator
+import oxn.common.utils as utils
+from oxn.common.errors import PrometheusException, JaegerException
+from oxn.models.response import ResponseVariable
+from oxn.observability.jaeger import Jaeger
+from oxn.observability.prometheus import Prometheus
 
 
 class MetricResponseVariable(ResponseVariable):
@@ -28,7 +29,7 @@ class MetricResponseVariable(ResponseVariable):
             name: str,
             experiment_start: float,
             experiment_end: float,
-            description: dict,
+            description: MetricResponseDescription,
             target: str,
     ):
         super().__init__(
@@ -38,20 +39,20 @@ class MetricResponseVariable(ResponseVariable):
         """Orchestrator interface to interact with docker or kubernetes"""
         self.name = name
         """User-defined name of the response variable"""
-        self.metric_name = description["metric_name"]
+        self.metric_name = description.metric_name
         """User-supplied prometheus metric name"""
         self.description = description
         """Description of the response from the experiment spec"""
-        self.labels = description.get("labels", {})
+        self.labels = description.labels
         """User-supplied prometheus label names and values"""
-        self.step = description.get("step", 1)
+        self.step = description.step
         """User-supplied prometheus step size"""
         self.start = self.experiment_start - utils.time_string_to_seconds(
-            description["left_window"]
+            description.left_window
         )
         """Timestamp of the start of the observation period relative to experiment start"""
         self.end = self.experiment_end + utils.time_string_to_seconds(
-            description["right_window"]
+            description.right_window
         )
         """Timestamp of the end of the observation period relative to experiment end"""
         self.prometheus = Prometheus(orchestrator=self.orchestrator, target=target)
@@ -196,7 +197,7 @@ class TraceResponseVariable(ResponseVariable):
             name: str,
             experiment_start: float,
             experiment_end: float,
-            description: dict,
+            description: TraceResponseDescription,
     ):
         super(TraceResponseVariable, self).__init__(
             experiment_start=experiment_start,
@@ -206,16 +207,16 @@ class TraceResponseVariable(ResponseVariable):
         """Orchestrator interface to interact with docker or kubernetes"""
         self.name = name
         """User-defined name of the response variable"""
-        self.service_name = description["service_name"]
+        self.service_name = description.service_name
         """Service name to search traces in Jaeger"""
-        self.limit = description.get("limit", 100)
+        self.limit = description.limit
         """Limit number of traces when searching with Jaeger"""
         self.start = self.experiment_start - utils.time_string_to_seconds(
-            description["left_window"]
+            description.left_window
         )
         """UTC Timestamp of the start of the observation period relative to the experiment start"""
         self.end = self.experiment_end + utils.time_string_to_seconds(
-            description["right_window"]
+            description.right_window
         )
         """UTC Timestamp of the end of the observation period relative to the experiment end"""
         self.jaeger = Jaeger(orchestrator=self.orchestrator)

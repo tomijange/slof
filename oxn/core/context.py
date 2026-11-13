@@ -14,7 +14,7 @@ import sys
 import importlib
 from typing import List
 
-from .models.treatment import Treatment
+from oxn.models.treatment import Treatment
 
 
 class Context:

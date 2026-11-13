@@ -18,25 +18,29 @@ from kubernetes.client.models.v1_pod import V1Pod
 
 import oxn
 from oxn.models.orchestrator import Orchestrator  # Import the abstract base class
+from oxn.orchestration.cluster_proxy import ClusterProxy
 from oxn.steering.steering_controller import SteeringController
+from oxn.orchestration.deployment import Deployment
+from oxn.models.experiment_spec import ExperimentSpec, ServiceReference
 
-from .errors import OxnException, OrchestratorException, OrchestratorResourceNotFoundException
+from oxn.common.errors import OxnException, OrchestratorException, OrchestratorResourceNotFoundException
+
+logger = logging.getLogger(__name__)
 
 # Constants
 OXN_SIDECAR_CONTAINER_NAME = "oxn-steering-container"
 
 class KubernetesOrchestrator(Orchestrator):
-    def __init__(self, experiment_config=None):
-        logging.info("Initializing Kubernetes orchestrator")
-        if experiment_config is None:
-            logging.error("No experiment configuration provided. Continue with empty configuration")
-            experiment_config = {}
-        self.experiment_config: dict = experiment_config
+    def __init__(self, experiment_config: ExperimentSpec):
+        logger.info("Initializing Kubernetes orchestrator")
+        self.experiment_config = experiment_config
         config.load_kube_config()
         self.kube_client = client.CoreV1Api()
         self.api_client = client.AppsV1Api()
+        self.cluster_proxy = ClusterProxy()
+        """HTTP access to pods and services, which are not routable from outside the cluster"""
 
-        logging.info("Loading all running resources in k8s cluster")
+        logger.info("Loading all running resources in k8s cluster")
         
         self.list_of_all_pods = self.kube_client.list_pod_for_all_namespaces(watch=False)
         #for i in self.list_of_all_pods.items:
@@ -48,48 +52,59 @@ class KubernetesOrchestrator(Orchestrator):
             #print("%s\t%s" % (i.metadata.namespace, i.metadata.name))
 
         """Check if all of experiment_config.sue.required services are running"""
-        self.required_services = self.experiment_config["experiment"]["sue"]["required"]
+        self.required_services = self.experiment_config.experiment.sue.required
         #self._check_required_services(self.required_services)
 
-        self.steering_controller = SteeringController(kube_client=self.kube_client, api_client=self.api_client)
+        self.steering_controller = SteeringController(kube_client=self.kube_client, api_client=self.api_client, cluster_proxy=self.cluster_proxy)
+
+        self.deployment = Deployment.from_experiment_spec(self.experiment_config)
+        """Deployment of the SUE, None if the spec expects an already running SUE"""
             
     
     def _check_required_services(self, required_services) -> bool:
         """Check if all of experiment_config.sue.required services are running"""
         for service in required_services:
-            service_name = service["name"]
-            namespace = service["namespace"]
+            service_name = service.name
+            namespace = service.namespace
             try:
                 service = self.kube_client.read_namespaced_service(service_name, namespace)
-                #logging.info(f"Service {service_name} in namespace {namespace} is running")
+                logger.debug(f"Service {service_name} in namespace {namespace} is running")
             except ApiException as e:
-                #logging.error(f"Service {service_name} in namespace {namespace} is not running")
+                #logger.error(f"Service {service_name} in namespace {namespace} is not running")
                 raise OxnException(
                     message=f"Service {service_name} in namespace {namespace} is not running but set as a required service",
                     explanation=str(e),
                 )
+        logger.info(f"All {len(required_services)} required services are running")
         return True
-            
-    
-    def orchestrate(self):
-        logging.info("orchestrate noop implementation")
-        pass
 
-    def ready(self, expected_services: List[str] | None, timeout: int = 120) -> bool:
+
+    def orchestrate(self):
+        if self.deployment is None:
+            logger.info("No deployment in experiment spec, expecting the SUE to be running already")
+            return
+        self.deployment.deploy()
+        # pods and services were listed on init, before the SUE existed
+        self.list_of_all_pods = self.kube_client.list_pod_for_all_namespaces(watch=False)
+        self.list_of_all_services = self.kube_client.list_service_for_all_namespaces(watch=False)
+
+    def ready(self, expected_services: List[ServiceReference] | None, timeout: int = 120) -> bool:
         if expected_services is None:
             expected_services = self.required_services
         return self._check_required_services(expected_services)
 
     def teardown(self):
-        logging.info("teardown noop implementation")
-        pass
+        if self.deployment is None:
+            logger.info("No deployment in experiment spec, leaving the SUE running")
+            return
+        self.deployment.teardown()
 
     def translate_compose_names(self, compose_names: List[str]):
-        logging.info("translate_compose_names noop implementation")
+        logger.info("translate_compose_names noop implementation")
         pass
 
     def translate_container_names(self, container_names: List[str]):
-        logging.info("translate_container_names noop implementation")
+        logger.info("translate_container_names noop implementation")
         pass
 
     def running_services(self) -> List[str]:
@@ -115,7 +130,7 @@ class KubernetesOrchestrator(Orchestrator):
             OrchestratorException: If an error occurs while executing the command
         
         """
-        #logging.info("execute_console_command noop implementation for service %s with command %s", service, command)
+        #logger.info("execute_console_command noop implementation for service %s with command %s", service, command)
 
         # Get all pods with label app.kubernetes.io/name=service
         pods = self.kube_client.list_namespaced_pod(namespace=namespace, label_selector=f"{label_selector}={label}")
@@ -135,7 +150,7 @@ class KubernetesOrchestrator(Orchestrator):
                 
                 container = None
                 if pod.spec.containers and pod.spec.containers.__len__() > 1:
-                    logging.warning(f"Pod {pod.metadata.name} in namespace {label} has more than one container. Using the first container to execute the command. (Container: {pod.spec.containers[0].name})")
+                    logger.warning(f"Pod {pod.metadata.name} in namespace {label} has more than one container. Using the first container to execute the command. (Container: {pod.spec.containers[0].name})")
                     container = pod.spec.containers[0]
                 else:
                     container = pod.spec.containers[0]
@@ -168,7 +183,7 @@ class KubernetesOrchestrator(Orchestrator):
                 
                 return exit_status, command_output
                 
-                logging.info(response)
+                logger.info(response)
             except ApiException as e:
                 raise OrchestratorException(
                     message=f"Error while executing command {command} on pod {pod.metadata.name} in namespace {label}: {e.body}",
@@ -266,7 +281,7 @@ class KubernetesOrchestrator(Orchestrator):
         cluster_ip = service.spec.cluster_ip
         
         if cluster_ip is None or cluster_ip == "None":  
-            logging.info(f"Service {name} in namespace {namespace} has no cluster IP. Falling back to pod IP by selecting first pod and receiving its IP")
+            logger.info(f"Service {name} in namespace {namespace} has no cluster IP. Falling back to pod IP by selecting first pod and receiving its IP")
             # fall back to pod IP
             name_label_of_service = service.metadata.labels["app.kubernetes.io/name"]
             pods = self.kube_client.list_namespaced_pod(namespace=namespace, label_selector=f"app.kubernetes.io/name={name_label_of_service}")
@@ -288,16 +303,23 @@ class KubernetesOrchestrator(Orchestrator):
             The address of the Jaeger service
 
         """
-        assert self.experiment_config["experiment"] is not None
-        assert self.experiment_config["experiment"]["services"] is not None
-        assert self.experiment_config["experiment"]["services"]["jaeger"] is not None
-        
-        jaeger_name = self.experiment_config["experiment"]["services"]["jaeger"]["name"]
-        jaeger_namespace = self.experiment_config["experiment"]["services"]["jaeger"]["namespace"]
+        jaeger = self.get_jaeger_service()
         return self.get_address_for_service(
-            name=jaeger_name,
-            namespace=jaeger_namespace,
+            name=jaeger.name,
+            namespace=jaeger.namespace,
         )
+
+    def get_jaeger_service(self):
+        """
+        Get the Jaeger service from the experiment spec
+
+        Returns:
+            The name and namespace of the Jaeger service
+
+        """
+        assert self.experiment_config.experiment.services is not None
+
+        return self.experiment_config.experiment.services.jaeger
     
     def get_prometheus_address(self, target) -> str:
         """
@@ -308,23 +330,25 @@ class KubernetesOrchestrator(Orchestrator):
 
         """
         
-        assert self.experiment_config["experiment"] is not None
-        assert self.experiment_config["experiment"]["services"] is not None
-        assert self.experiment_config["experiment"]["services"]["prometheus"] is not None
-        
-        prometheus_configs = self.experiment_config["experiment"]["services"]["prometheus"]
-               
-        for prometheus_config in prometheus_configs:
-            assert prometheus_config["target"] is not None
-            if prometheus_config["target"] == target:
-                assert prometheus_config["name"] is not None
-                assert prometheus_config["namespace"] is not None
-                prometheus_name = prometheus_config["name"]
-                prometheus_namespace = prometheus_config["namespace"]
-                return self.get_address_for_service(
-                    name=prometheus_name,
-                    namespace=prometheus_namespace,
-                )
+        prometheus_config = self.get_prometheus_service(target)
+        return self.get_address_for_service(
+            name=prometheus_config.name,
+            namespace=prometheus_config.namespace,
+        )
+
+    def get_prometheus_service(self, target):
+        """
+        Get the Prometheus service of a target from the experiment spec
+
+        Returns:
+            The name and namespace of the Prometheus service
+
+        """
+        assert self.experiment_config.experiment.services is not None
+
+        for prometheus_config in self.experiment_config.experiment.services.prometheus:
+            if prometheus_config.target == target:
+                return prometheus_config
         
         raise OrchestratorException(
             message=f"No Prometheus configuration found for target {target}",
@@ -491,7 +515,7 @@ class KubernetesOrchestrator(Orchestrator):
                 )
                 return response
             except ApiException as e:
-                logging.error(f"Error while updating deployment {deployment.metadata.name} in namespace {deployment.metadata.namespace}: {e.body}. Waiting for 1 second and retrying. Retry {i}")
+                logger.error(f"Error while updating deployment {deployment.metadata.name} in namespace {deployment.metadata.namespace}: {e.body}. Waiting for 1 second and retrying. Retry {i}")
                 time.sleep(1)
                 
         raise OrchestratorException(
@@ -599,7 +623,7 @@ class KubernetesOrchestrator(Orchestrator):
         
         try:
             self.kube_client.patch_namespaced_config_map(name=configmap_name, namespace="system-under-evaluation", body=configmap)
-            logging.info(f"ConfigMap {configmap_name} updated successfully.")
+            logger.info(f"ConfigMap {configmap_name} updated successfully.")
         except ApiException as e:
             raise OrchestratorException(
                 message=f"Error while updating ConfigMap {configmap_name} in namespace system-under-evaluation: {e.body}",
@@ -729,7 +753,7 @@ class KubernetesOrchestrator(Orchestrator):
         
         try:
             self.kube_client.patch_namespaced_config_map(name=configmap_name, namespace="system-under-evaluation", body=configmap)
-            logging.info(f"ConfigMap {configmap_name} updated successfully.")
+            logger.info(f"ConfigMap {configmap_name} updated successfully.")
         except ApiException as e:
             raise OrchestratorException(
                 message=f"Error while updating ConfigMap {configmap_name} in namespace system-under-evaluation: {e.body}",
@@ -769,16 +793,16 @@ class KubernetesOrchestrator(Orchestrator):
         
         for pod in pods.items:
             self.kill_pod(pod)
-            logging.info(f"Pod {pod.metadata.name} in namespace {deployment.metadata.namespace} has been killed because of restart")
+            logger.info(f"Pod {pod.metadata.name} in namespace {deployment.metadata.namespace} has been killed because of restart")
             
         time.sleep(4)
         for i in range(0, 10):
             if self.is_deployment_ready(deployment):
                 break
             time.sleep(i * 2)
-            logging.info(f"Waiting for deployment {deployment.metadata.name} to be ready after restart. Retry {i}")
+            logger.info(f"Waiting for deployment {deployment.metadata.name} to be ready after restart. Retry {i}")
             
-        logging.info(f"Deployment {deployment.metadata.name} is ready after restart")
+        logger.info(f"Deployment {deployment.metadata.name} is ready after restart")
             
     def patch_deployment_to_include_steering_sidecar_container(self, deployment: V1Deployment):
         """
@@ -800,10 +824,10 @@ class KubernetesOrchestrator(Orchestrator):
         # check if sidecar container already exists
         for container in deployment.spec.template.spec.containers:
             if container.name == OXN_SIDECAR_CONTAINER_NAME:
-                logging.info(f"Sidecar container {OXN_SIDECAR_CONTAINER_NAME} already exists in deployment {deployment.metadata.name} in namespace {deployment.metadata.namespace}. Skipping patching")
+                logger.info(f"Sidecar container {OXN_SIDECAR_CONTAINER_NAME} already exists in deployment {deployment.metadata.name} in namespace {deployment.metadata.namespace}. Skipping patching")
                 return True
         
-        logging.info(f"Adding sidecar container {OXN_SIDECAR_CONTAINER_NAME} to deployment {deployment.metadata.name} in namespace {deployment.metadata.namespace}")
+        logger.info(f"Adding sidecar container {OXN_SIDECAR_CONTAINER_NAME} to deployment {deployment.metadata.name} in namespace {deployment.metadata.namespace}")
 
         # Add the sidecar container
         sidecar_container = client.V1Container(
@@ -832,7 +856,7 @@ class KubernetesOrchestrator(Orchestrator):
             if self.is_deployment_ready(deployment):
                 break
             time.sleep(i * 2)
-            logging.info(f"Waiting for deployment {deployment.metadata.name} to be ready after restart. Retry {i}")
+            logger.info(f"Waiting for deployment {deployment.metadata.name} to be ready after restart. Retry {i}")
 
         return True
         
@@ -1049,7 +1073,7 @@ class KubernetesOrchestrator(Orchestrator):
                     message="Error while deploying deployment",
                     explanation=str(e),
                 )
-            logging.warning(f"Deployment {body['metadata']['name']} already exists in namespace {body['metadata']['namespace']}. Trying to delete it and create it again.")
+            logger.warning(f"Deployment {body['metadata']['name']} already exists in namespace {body['metadata']['namespace']}. Trying to delete it and create it again.")
             try:
                 self.api_client.delete_namespaced_deployment(
                     name=body["metadata"]["name"],
@@ -1059,7 +1083,7 @@ class KubernetesOrchestrator(Orchestrator):
                     body=body,
                     namespace=body["metadata"]["namespace"],
                 )
-                logging.info(f"Deployment {body['metadata']['name']} in namespace {body['metadata']['namespace']} has been deleted and created again successfully")
+                logger.info(f"Deployment {body['metadata']['name']} in namespace {body['metadata']['namespace']} has been deleted and created again successfully")
             except ApiException as e:
                 raise OrchestratorException(
                     message="Error while deploying deployment",
@@ -1101,7 +1125,7 @@ class KubernetesOrchestrator(Orchestrator):
                     message="Error while deploying configmap",
                     explanation=str(e),
                 )
-            logging.warning(f"ConfigMap {body['metadata']['name']} already exists in namespace {body['metadata']['namespace']}. Trying to delete it and create it again.")
+            logger.warning(f"ConfigMap {body['metadata']['name']} already exists in namespace {body['metadata']['namespace']}. Trying to delete it and create it again.")
             try:
                 self.kube_client.delete_namespaced_config_map(
                     name=body["metadata"]["name"],
@@ -1111,7 +1135,7 @@ class KubernetesOrchestrator(Orchestrator):
                     body=body,
                     namespace=body["metadata"]["namespace"],
                 )
-                logging.info(f"ConfigMap {body['metadata']['name']} in namespace {body['metadata']['namespace']} has been deleted and created again successfully")
+                logger.info(f"ConfigMap {body['metadata']['name']} in namespace {body['metadata']['namespace']} has been deleted and created again successfully")
             except ApiException as e:
                 raise OrchestratorException(
                     message="Error while deploying configmap",
@@ -1152,7 +1176,7 @@ class KubernetesOrchestrator(Orchestrator):
                     message="Error while deploying service",
                     explanation=str(e),
                 )
-            logging.warning(f"Service {body['metadata']['name']} already exists in namespace {body['metadata']['namespace']}. Trying to delete it and create it again.")
+            logger.warning(f"Service {body['metadata']['name']} already exists in namespace {body['metadata']['namespace']}. Trying to delete it and create it again.")
             try:
                 self.kube_client.delete_namespaced_service(
                     name=body["metadata"]["name"],
@@ -1162,7 +1186,7 @@ class KubernetesOrchestrator(Orchestrator):
                     body=body,
                     namespace=body["metadata"]["namespace"],
                 )
-                logging.info(f"Service {body['metadata']['name']} in namespace {body['metadata']['namespace']} has been deleted and created again successfully")
+                logger.info(f"Service {body['metadata']['name']} in namespace {body['metadata']['namespace']} has been deleted and created again successfully")
             except ApiException as e:
                 raise OrchestratorException(
                     message="Error while deploying service",

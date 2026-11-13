@@ -16,8 +16,8 @@ import psutil
 
 import docker
 
-from .errors import OxnException
-from .treatments import (
+from oxn.common.errors import OxnException
+from oxn.core.treatments import (
     DeploymentScaleTreatment,
     EmptyDockerComposeTreatment,
     EmptyKubernetesTreatment,
@@ -39,12 +39,13 @@ from .treatments import (
     KubernetesProbabilisticHeadSamplingTreatment,
     KubernetesCorruptPacketTreatment,
 )
-from . import utils
-from .observer import Observer
-from .pricing import Accountant
-from .utils import utc_timestamp
-from .models.treatment import Treatment
-from .models.orchestrator import Orchestrator
+from oxn.common import utils
+from oxn.observability.observer import Observer
+from oxn.reporting.pricing import Accountant
+from oxn.common.utils import utc_timestamp
+from oxn.models.treatment import Treatment
+from oxn.models.orchestrator import Orchestrator
+from oxn.models.experiment_spec import ExperimentSpec
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ class ExperimentRunner:
     def __init__(
             self,
             orchestrator:Orchestrator,
-            config=None,
+            config: ExperimentSpec,
             config_filename=None,
             additional_treatments=None,
             random_treatment_order=False,
@@ -96,7 +97,7 @@ class ExperimentRunner:
     ):
         self.orchestrator = orchestrator
         self.config = config
-        """Experiment specification dict"""
+        """Experiment specification"""
         self.config_filename = config_filename
         """Experiment specification filename"""
         self.id = uuid.uuid4().hex
@@ -162,19 +163,15 @@ class ExperimentRunner:
 
     def _build_treatments(self) -> None:
         """Build a representation of treatments defined in config"""
-        treatment_section = self.config["experiment"]["treatments"]
+        treatment_section = self.config.experiment.treatments
         if self.random_treatment_order:
             random.shuffle(treatment_section)
         for treatment in treatment_section:
-            key = next(iter(treatment))
-            description = treatment[key]
-            params = description["params"]
-            action = description["action"]
-            self.treatments[key] = self._build_treatment(
-                action=action, params=params, name=key, orchestrator=self.orchestrator
+            self.treatments[treatment.name] = self._build_treatment(
+                action=treatment.action, params=treatment.params, name=treatment.name, orchestrator=self.orchestrator
             )
-            logger.debug("Successfully built treatment %s", self.treatments[key])
-        logger.info("Built %s treatments: %s", len(self.treatments), self.treatments.keys())
+            logger.debug("Successfully built treatment %s", self.treatments[treatment.name])
+        logger.info("Built %s treatments: %s", len(self.treatments), list(self.treatments))
 
     def _build_treatment(self, action, params, name, orchestrator) -> Treatment:
         """Build a single treatment from a description"""
@@ -208,12 +205,14 @@ class ExperimentRunner:
         """Execute runtime treatments"""
         logger.info("Starting compile time treatments")
         for treatment in self._get_compile_time_treatments():
+            logger.info(f"Injecting treatment {treatment.name}")
             treatment.start = utc_timestamp()
             treatment.inject()
 
     def clean_compile_time_treatments(self) -> None:
         logger.info("Cleaning compile time treatments")
         for treatment in self._get_compile_time_treatments():
+            logger.info(f"Cleaning treatment {treatment.name}")
             treatment.end = utc_timestamp()
             treatment.clean()
 
@@ -230,10 +229,13 @@ class ExperimentRunner:
         time.sleep(ttw_left)
         logger.info(f"Starting runtime treatments")
         for treatment in self._get_runtime_treatments():
+            logger.info(f"Injecting treatment {treatment.name}")
             treatment.start = utc_timestamp()
             treatment.inject()
+            logger.info(f"Cleaning treatment {treatment.name}")
             treatment.clean()
             treatment.end = utc_timestamp()
+            logger.info(f"Treatment {treatment.name} took {treatment.end - treatment.start:.1f}s")
         logger.info(f"Injected treatments")
 
     def observe_response_variables(self) -> None:
@@ -261,6 +263,9 @@ class ExperimentRunner:
         """Label the observed data with information from the treatments"""
         for treatment in self.treatments.values():
             for response_id, response_variable in self.observer.variables().items():
+                # the observer already warned about variables it could not capture
+                if response_variable.data is None:
+                    continue
                 response_variable.label(
                     treatment_end=treatment.end,
                     treatment_start=treatment.start,

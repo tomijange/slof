@@ -13,11 +13,11 @@ from locust import LoadTestShape
 from locust import events
 from locust.env import Environment
 
-from .models.load_generator import BaseLoadGenerator
-from oxn.kubernetes_orchestrator import KubernetesOrchestrator
+from oxn.models.load_generator import BaseLoadGenerator
+from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
-from .models.orchestrator import Orchestrator
-import oxn.utils as utils
+from oxn.models.orchestrator import Orchestrator
+import oxn.common.utils as utils
 
 logger = logging.getLogger(__name__)
 

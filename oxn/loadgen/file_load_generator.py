@@ -9,11 +9,12 @@ from locust.env import Environment
 from locust.stats import stats_printer, stats_history
 from locust.log import setup_logging
 
-from .models.load_generator import BaseLoadGenerator
-from .errors import LocustException, OxnException
-from .kubernetes_orchestrator import KubernetesOrchestrator
-from .models.orchestrator import Orchestrator
-import oxn.utils as utils
+from oxn.models.load_generator import BaseLoadGenerator
+from oxn.models.experiment_spec import ExperimentSpec
+from oxn.common.errors import LocustException, OxnException
+from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
+from oxn.models.orchestrator import Orchestrator
+import oxn.common.utils as utils
 
 from gevent import Greenlet
 from gevent.pool import Group
@@ -27,7 +28,7 @@ class LocustFileLoadgenerator(BaseLoadGenerator):
     This loads the locust file and runs the locust file
     """
     
-    def __init__(self, orchestrator: Orchestrator, config: dict):
+    def __init__(self, orchestrator: Orchestrator, config: ExperimentSpec):
         super().__init__(orchestrator, config)
         """The experiment spec"""
         self.run_time: int = 0
@@ -41,23 +42,22 @@ class LocustFileLoadgenerator(BaseLoadGenerator):
 
     def _read_config(self):
         """Read the load generation section of an experiment specification"""
-        loadgen_section: dict = self.config["experiment"]["loadgen"]
-        self.stages = loadgen_section.get("stages", None)
-        self.run_time = int(utils.time_string_to_seconds(loadgen_section["run_time"]))
-        self.locust_files = loadgen_section.get("locust_files", None)
-       
-        self.target = loadgen_section.get("target")
-        
-        self.max_users = loadgen_section.get("max_users", 100)
-        self.spawn_rate = loadgen_section.get("spawn_rate", 10)
-        
+        loadgen_section = self.config.experiment.loadgen
+        self.run_time = int(utils.time_string_to_seconds(loadgen_section.run_time))
+        self.locust_files = loadgen_section.locust_files
+
+        self.target = loadgen_section.target
+
+        self.max_users = loadgen_section.max_users
+        self.spawn_rate = loadgen_section.spawn_rate
+
         self.base_address = "localhost"
         self.port = 8080
         
         if self.target:
             assert isinstance(self.orchestrator, KubernetesOrchestrator), "Orchestrator must be KubernetesOrchestrator if target is specified"
-            self.base_address = self.orchestrator.get_address_for_service(name=self.target["name"], namespace=self.target["namespace"])
-            self.port = self.target["port"]
+            self.base_address = self.orchestrator.get_address_for_service(name=self.target.name, namespace=self.target.namespace)
+            self.port = self.target.port
             
         logger.info(f"Base address for load generation set to {self.base_address}:{self.port}")
         
@@ -65,7 +65,7 @@ class LocustFileLoadgenerator(BaseLoadGenerator):
         self.env.create_local_runner()
         
         for locust_file in self.locust_files:
-            path = locust_file["path"]
+            path = locust_file.path
             locust_module = self._load_locust_file(path)
             for user_class in dir(locust_module):
                 user_class_instance = getattr(locust_module, user_class)

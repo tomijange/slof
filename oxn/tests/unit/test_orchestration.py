@@ -2,12 +2,13 @@ import unittest
 import yaml
 
 from docker_orchestration import DockerComposeOrchestrator
+from oxn.core.validation import validate_syntax
 from oxn.tests.unit.spec_mocks import experiment_spec_mock
 
 
 class DockerOrchestrationTest(unittest.TestCase):
     spec = experiment_spec_mock
-    loaded_spec = yaml.safe_load(spec)
+    loaded_spec = validate_syntax(yaml.safe_load(spec))
 
     def setUp(self) -> None:
         self.orc = DockerComposeOrchestrator(experiment_config=self.loaded_spec)

@@ -2,7 +2,7 @@ import unittest
 import docker
 import psutil
 
-from oxn.pricing import Accountant
+from oxn.reporting.pricing import Accountant
 
 
 class AccountantIntegrationTest(unittest.TestCase):

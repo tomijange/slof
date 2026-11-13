@@ -15,7 +15,7 @@ import functools
 
 import yaml
 
-from oxn.errors import OxnException
+from oxn.common.errors import OxnException
 
 SECONDS_MAP = {
     "us": 1 / 10 ** 6,

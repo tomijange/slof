@@ -5,6 +5,7 @@ Connection: Called by main.py and Engine to compile and save experiment results.
 
 Handle the generation of experiment reports"""
 import datetime
+import logging
 import uuid
 from typing import Tuple, Union
 
@@ -14,12 +15,14 @@ import yaml
 import pandas as pd
 from scipy.stats import ttest_ind
 
-from .runner import ExperimentRunner
-from .models.treatment import Treatment
-from .responses import TraceResponseVariable, MetricResponseVariable
-from .store import construct_key
-from .utils import humanize_utc_timestamp
-from .errors import OxnException
+from oxn.core.runner import ExperimentRunner
+from oxn.models.treatment import Treatment
+from oxn.observability.responses import TraceResponseVariable, MetricResponseVariable
+from oxn.reporting.store import construct_key
+from oxn.common.utils import humanize_utc_timestamp
+from oxn.common.errors import OxnException
+
+logger = logging.getLogger(__name__)
 
 
 class Reporter:
@@ -86,6 +89,7 @@ class Reporter:
             label_column=treatment.name,
             value_column=value_column,
         )
+        logger.debug(f"Welch t-test of {treatment.name} on {display_response_name}: t={statistic}, p={pvalue}")
         self._add_interaction_data(
             treatment_name=treatment.name,
             treatment_type=treatment.treatment_type,
@@ -270,3 +274,4 @@ class Reporter:
         with open(self.report_path + self.report_file_name , "w+") as fp:
             contents = yaml.dump(self.report_data, sort_keys=False)
             fp.write(contents)
+        logger.info(f"Wrote report to {self.report_path + self.report_file_name}")
