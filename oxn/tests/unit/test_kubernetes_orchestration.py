@@ -2,7 +2,9 @@ import unittest
 import yaml
 
 
-from oxn.kubernetes_orchestrator import KubernetesOrchestrator
+from oxn.core.validation import validate_syntax
+from oxn.models.experiment_spec import ServiceReference
+from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 from oxn.tests.unit.spec_mocks import kubernetes_experiment
 from oxn.models.orchestrator import Orchestrator
 
@@ -12,11 +14,7 @@ class KubernetesOrchestrationTest(unittest.TestCase):
     loaded_spec = yaml.safe_load(spec)
 
     def setUp(self) -> None:
-        self.assertTrue(self.loaded_spec)
-        self.assertTrue(self.loaded_spec["experiment"])
-        self.assertTrue(self.loaded_spec["experiment"]["sue"])
-        self.assertTrue(self.loaded_spec["experiment"]["sue"]["required"])
-        self.orc = KubernetesOrchestrator(experiment_config=self.loaded_spec)
+        self.orc = KubernetesOrchestrator(experiment_config=validate_syntax(self.loaded_spec))
 
     def tearDown(self) -> None:
         pass
@@ -33,12 +31,11 @@ class KubernetesOrchestrationTest(unittest.TestCase):
         self.assertTrue(self.orc.kube_client)
 
     def test_it_erros_when_not_all_required_found(self):
-        self.loaded_spec["experiment"]["sue"]["required"].append(
-             {"namespace": "monitoring", "name": "not-running-service"}
+        self.orc.required_services.append(
+            ServiceReference(namespace="monitoring", name="not-running-service")
         )
         with self.assertRaises(Exception):
             self.orc.ready()
-        self.loaded_spec["experiment"]["sue"]["required"].pop()
 
     def test_it_checks_all_required(self):
         self.assertTrue(self.orc.ready())

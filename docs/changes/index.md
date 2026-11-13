@@ -7,6 +7,7 @@ This fork builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legle
 | # | Change | Compared to GOXN |
 |---|---|---|
 | 1 | [Package layout](01-package-layout.md) | Modules in packages by responsibility, absolute imports, entry point `oxn.cli.main:main` |
+| 2 | [Typed experiment specs](02-typed-specs.md) | A pydantic spec model instead of `schema` and nested dicts. Unknown keys stop the run |
 
 ## GOXN and now
 
@@ -15,6 +16,7 @@ What differs from GOXN today, by area. "Changed in" points to the change pages, 
 | Area | GOXN | Now | Changed in | Documented in |
 |---|---|---|---|---|
 | Code layout | About 25 modules side by side in `oxn/` | Packages by responsibility | [1](01-package-layout.md#packages) | [Architecture](../architecture.md#packages) |
+| Spec format | `schema` validation, unknown keys ignored | Typed pydantic model, unknown keys rejected | [2](02-typed-specs.md#the-spec-model) | [Experiments](../experiments.md#spec-structure) |
 
 ## Open limitations
 
@@ -45,4 +47,5 @@ When a later change makes part of an older page wrong, leave the old text, add a
 :hidden:
 
 01-package-layout
+02-typed-specs
 ```
