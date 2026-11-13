@@ -10,7 +10,6 @@ deployments
 experiments
 experiment-design
 architecture
-changes/index
 ```
 
 ```{toctree}
@@ -27,4 +26,11 @@ tools/jaeger
 tools/elasticsearch
 tools/istio
 tools/locust
+```
+
+```{toctree}
+:hidden:
+:caption: Changes
+
+changes/index
 ```

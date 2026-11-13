@@ -2,6 +2,26 @@
 
 SLOF builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legler. This section lists every change since then, one page per change, and compares each one to GOXN. Read them in order: later pages build on earlier ones.
 
+```{toctree}
+:hidden:
+
+01-package-layout
+02-typed-specs
+03-deployment-section
+04-api-server-proxy
+05-oxn-setup
+06-skip-missing-responses
+07-logging
+08-stack-versions
+09-repository-layout
+10-documentation-site
+11-current-stack-specs
+12-remove-docker-compose
+13-rename-to-slof
+14-remove-setup-scripts
+15-material-theme
+```
+
 ## In order
 
 | # | Change | Compared to GOXN |
@@ -20,6 +40,7 @@ SLOF builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legler. Th
 | 12 | [Removal of Docker Compose support](12-remove-docker-compose.md) | Kubernetes only. The Compose orchestrator, Docker-only treatments, `--accounting` and `sue.compose` are gone |
 | 13 | [Rename to SLOF](13-rename-to-slof.md) | The project is called SLOF, with its own repository and docs site. The package and `oxn` command keep their names |
 | 14 | [Removal of the setup scripts](14-remove-setup-scripts.md) | No `setup/` folder. `oxn setup` prepares the cluster, Getting started covers installing |
+| 15 | [Material theme for the docs](15-material-theme.md) | The docs site uses `sphinx-immaterial`, with tabs, search, light and dark mode and the theme's Mermaid renderer |
 
 ## GOXN and now
 
@@ -43,7 +64,7 @@ What differs from GOXN today, by area. "Changed in" points to the change pages, 
 | Metric names in specs | `jaeger-query`, `kepler_container_*_joules_total`, demo 1.x names | Names of the current charts | [8](08-stack-versions.md#experimentstestyml), [11](11-current-stack-specs.md#metric-names) | [Kepler](../tools/kepler.md#metrics), [Experiment design](../experiment-design.md#responses) |
 | Experiment specs | 30 s export specs leave `product-catalog` at 1 s | Fixed, every spec starts with a comment | [11](11-current-stack-specs.md#fix-in-the-30-s-export-specs) | [Experiment design](../experiment-design.md#the-specs-and-what-to-compare) |
 | Repository layout | Values and dashboard in the root, helper scripts | `deployments/`, no helper scripts | [9](09-repository-layout.md#deployments), [3](03-deployment-section.md#removed-scripts), [4](04-api-server-proxy.md#the-cluster-proxy), [5](05-oxn-setup.md#the-command) | [Getting started](../getting-started.md) |
-| Documentation | One long README | Sphinx site with guides and tool pages | [10](10-documentation-site.md#pages), [11](11-current-stack-specs.md#documentation) | [Overview](../index.md) |
+| Documentation | One long README | Sphinx site with guides and tool pages, Material theme | [10](10-documentation-site.md#pages), [11](11-current-stack-specs.md#documentation), [15](15-material-theme.md#theme) | [Overview](../index.md) |
 
 ## Open limitations
 
@@ -58,8 +79,8 @@ What the changes so far leave open:
 
 Add a page to this folder with every change to the code, the specs, the deployments or the tooling:
 
-- **Name.** Number it after the last page, for example `15-short-name.md`, and title it `# 15. Short name`.
-- **Lists.** Add it at the bottom of the [In order](#in-order) table and of the toctree below. Update the [GOXN and now](#goxn-and-now) table if the change touches one of its areas, or add a row. Update [Open limitations](#open-limitations).
+- **Name.** Number it after the last page, for example `16-short-name.md`, and title it `# 16. Short name`.
+- **Lists.** Add it at the bottom of the [In order](#in-order) table and of the toctree at the top of this file. Update the [GOXN and now](#goxn-and-now) table if the change touches one of its areas, or add a row. Update [Open limitations](#open-limitations).
 - **Perspective.** Compare to GOXN, not to the previous change, so each page reads on its own. Commit hashes and dates are not needed, the order is the number.
 
 Each page uses the same structure:
@@ -70,22 +91,3 @@ Each page uses the same structure:
 4. **Known limitations.** What the change leaves open on purpose, with a status.
 
 When a later change makes part of an older page wrong, leave the old text, add a short note that links to the newer page, and update the status of its known limitations.
-
-```{toctree}
-:hidden:
-
-01-package-layout
-02-typed-specs
-03-deployment-section
-04-api-server-proxy
-05-oxn-setup
-06-skip-missing-responses
-07-logging
-08-stack-versions
-09-repository-layout
-10-documentation-site
-11-current-stack-specs
-12-remove-docker-compose
-13-rename-to-slof
-14-remove-setup-scripts
-```

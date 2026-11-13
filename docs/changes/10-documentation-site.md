@@ -14,6 +14,8 @@ GOXN documented installation, the Helm commands for every tool and the experimen
 | Publishing | GitHub README | GitHub Pages, from `main` |
 | README | Installation and every Helm command | Quick start and links into the site |
 
+The Read the Docs theme was replaced later, see [Material theme for the docs](15-material-theme.md).
+
 ## Pages
 
 **Now documented in:** [Overview](../index.md)

@@ -86,7 +86,7 @@ GOXN results from these two specs were recorded with `product-catalog` exporting
 
 - [Experiment design](../experiment-design.md) is new. It explains what the experiments compare, how a run is timed and which specs to compare with each other.
 - [Deployments](../deployments.md#shipped-setups) lists the three setups instead of `test.yml` and the removed `debug.yml`. [Istio](../tools/istio.md) points to the Istio spec.
-- **Mermaid diagrams.** The docs load `sphinxcontrib-mermaid`, so plain `mermaid` code fences render as diagrams on the site and on GitHub.
+- **Mermaid diagrams.** The docs load `sphinxcontrib-mermaid`, so plain `mermaid` code fences render as diagrams on the site and on GitHub. Since [Material theme for the docs](15-material-theme.md#mermaid-diagrams), the theme renders them instead.
 - **Live preview.** `make docs-serve` rebuilds the site on every change and opens it in the browser, using `sphinx-autobuild`. `DOCS_PORT` sets the port, default 8000.
 
 ## Known limitations
