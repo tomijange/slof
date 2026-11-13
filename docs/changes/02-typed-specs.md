@@ -29,7 +29,7 @@ These modules now receive the model instead of a dict: the engine, both orchestr
 - **Existing specs keep their format.** Responses and treatments are still written as `- name: {...}`. A validator flattens each entry into a model with a `name` field. Responses are a discriminated union on `type` (`metric` or `trace`), so an error message names the fields of the right type.
 - **Room to grow.** New sections, such as the `deployment` section from [the next change](03-deployment-section.md), are typed like the rest.
 
-`orchestrator` is limited to `docker-compose` or `kubernetes` by the model. That is why the engine no longer has its own "Unknown orchestrator" branch.
+`orchestrator` is limited to `docker-compose` or `kubernetes` by the model. That is why the engine no longer has its own "Unknown orchestrator" branch. Since [Removal of Docker Compose support](12-remove-docker-compose.md), only `kubernetes` is accepted.
 
 ## What this breaks
 

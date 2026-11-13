@@ -15,7 +15,6 @@ oxn experiments/test.yml --report reports/
 | `--times N` | Run the experiment N times, default 1 |
 | `--randomize` | Run treatments in random order instead of spec order |
 | `--extend FILE` | Load additional treatments from a Python file |
-| `--accounting` | Record resource usage. Requires `--report`. |
 | `--timeout T` | How long to wait for the SUE to become ready, default `1m` |
 | `--keep-sue` | Skip teardown after the experiment |
 | `--loglevel LEVEL` | `debug`, `info`, `warning`, `error` or `critical`, default `info` |
@@ -61,7 +60,6 @@ experiment:
           duration: 60m,
         }
   sue:
-    compose: opentelemetry-demo/docker-compose.yml
     required: [{namespace: system-under-evaluation, name: prometheus}]
   loadgen:
     run_time: 70m
@@ -80,7 +78,6 @@ experiment:
 - **`services`** names the Jaeger and Prometheus services. `target` picks the Prometheus a response reads from: `oxn` for the external stack, `sue` for the one inside the SUE.
 - **`responses`** are the values to record. `left_window` and `right_window` set how far the observation extends before and after a treatment.
 - **`treatments`** run in the listed order unless you pass `--randomize`.
-- **`sue.compose`** is required by the spec model even on Kubernetes, where its value is not used.
 - **`loadgen`** configures [Locust](tools/locust.md). With `target` set, `oxn` runs Locust inside the cluster.
 
 ## Treatments

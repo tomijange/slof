@@ -67,13 +67,6 @@ parser.add_argument(
     help="Create an experiment report in the specified directory. Make sure that the directory exists. The report will be named report_<timestamp>.yaml",
 )
 parser.add_argument(
-    "--accounting",
-    action="store_true",
-    help="Capture resource usage for oxn and the sue. Requires that the report option is set."
-    "Will increase the time it takes to run the experiment by about "
-    "two seconds for each service in the sue.",
-)
-parser.add_argument(
     "--randomize",
     action="store_true",
     help="Randomize the treatment execution order. Per default, treatments are executed in the order given in the "
@@ -148,6 +141,4 @@ def parse_oxn_args(args):
     if args and args[0] in subcommand_parsers:
         return subcommand_parsers[args[0]].parse_args(args[1:])
     args = parser.parse_args(args)
-    if args.accounting and not args.report:
-        parser.error("The --accounting option requires the --report option to be set")
     return args

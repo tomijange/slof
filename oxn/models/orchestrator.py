@@ -19,10 +19,6 @@ class Orchestrator(ABC):
         pass
 
     @abstractmethod
-    def translate_compose_names(self, compose_names: List[str]):
-        pass
-
-    @abstractmethod
     def translate_container_names(self, container_names: List[str]):
         pass
 

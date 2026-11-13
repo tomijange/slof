@@ -27,7 +27,7 @@ class PrometheusException(OxnException):
 
 
 class OrchestrationException(OxnException):
-    """Custom exception subclass to enforce system boundaries with respect to the DockerComposeOrchestrator"""
+    """Custom exception subclass to enforce system boundaries with respect to the orchestration of the sue"""
 
     pass
 

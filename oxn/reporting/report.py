@@ -256,19 +256,6 @@ class Reporter:
             }
         return self.report_data
 
-    def add_accountant_data(self, runner: ExperimentRunner):
-        """Add data from an accountant"""
-        self.report_data["report"]["runs"][runner.short_id]["accounting"] = {}
-        accountant_data = runner.accountant.consolidated_data
-        for container_id, container_data in accountant_data.items():
-            container_name = container_data["container_name"]
-            self.report_data["report"]["runs"][runner.short_id]["accounting"][
-                container_name
-            ] = {
-                "cpu_seconds": container_data["total_cpu_usage"],
-                "number_of_cpus": container_data["number_of_cpus"],
-            }
-
     def dump_report_data(self):
         # report name has current time in it
         with open(self.report_path + self.report_file_name , "w+") as fp:

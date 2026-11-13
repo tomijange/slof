@@ -1,6 +1,6 @@
 """ 
 Purpose: Provides utility functions.
-Functionality: Contains helper functions for time conversion, file manipulation, and environment variable management.
+Functionality: Contains helper functions for time conversion, and timestamps.
 Connection: Utility functions are used across different modules for common tasks.
 
  """
@@ -13,9 +13,7 @@ from datetime import timezone
 
 import functools
 
-import yaml
 
-from oxn.common.errors import OxnException
 
 SECONDS_MAP = {
     "us": 1 / 10 ** 6,
@@ -67,46 +65,3 @@ def utc_timestamp() -> float:
 def humanize_utc_timestamp(timestamp):
     """Return a human-readable version of a timestamp"""
     return datetime.utcfromtimestamp(timestamp)
-
-
-def add_env_variable(compose_file_path, service_name, variable_name, variable_value):
-    """Add an environment variable with a given value to a service in a Docker Compose file"""
-    with open(compose_file_path, "r") as file:
-        compose_dict = yaml.safe_load(file)
-
-    if service_name not in compose_dict["services"]:
-        raise OxnException(explanation=f"Service {service_name} not found in Docker Compose file")
-
-    if "environment" not in compose_dict["services"][service_name]:
-        compose_dict["services"][service_name]["environment"] = []
-
-    environment = compose_dict["services"][service_name]["environment"]
-    exists = False
-    if isinstance(environment, list):
-        for idx, env_var in enumerate(environment):
-            if env_var.startswith(f"{variable_name}="):
-                environment[idx] = f"{variable_name}={variable_value}"
-                exists = True
-        if not exists:
-            environment.append(f"{variable_name}={variable_value}")
-    else:
-        raise OxnException(explanation="Environment field for %s is not a list" % service_name)
-
-    with open(compose_file_path, "w") as file:
-        yaml.safe_dump(compose_dict, file)
-
-
-def remove_env_variable(compose_file_path, service_name, variable_name, variable_value):
-    """Remove an environment variable from a service in a Docker Compose file"""
-    with open(compose_file_path, "r") as file:
-        compose_dict = yaml.safe_load(file)
-
-    if service_name not in compose_dict["services"]:
-        raise OxnException(explanation=f"Service {service_name} not found in Docker Compose file")
-
-    if "environment" in compose_dict["services"][service_name]:
-        idx = compose_dict["services"][service_name]["environment"].index(f"{variable_name}={variable_value}")
-        compose_dict["services"][service_name]["environment"].remove(idx)
-
-    with open(compose_file_path, "w") as file:
-        yaml.safe_dump(compose_dict, file)

@@ -70,7 +70,6 @@ def run_experiment(args):
             runs=args.times,
             orchestration_timeout=args.timeout,
             randomize=args.randomize,
-            accounting=args.accounting,
             keep_sue=args.keep_sue,
         )
     except OxnException as oxn_exception:

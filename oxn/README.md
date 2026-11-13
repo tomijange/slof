@@ -12,7 +12,7 @@
 6. **Validation**: 
 * Before running the experiment, `engine.py` validates the configuration using `validation.py`. 
 7. **Orchestration**: 
-* `engine.py` uses `orchestration.py` to set up the system under experiment (SUE) using Docker Compose. 
+* `engine.py` uses `kubernetes_orchestrator.py` to set up the system under experiment (SUE) on Kubernetes. 
 8. **Load Generation**: 
 * During the experiment, `engine.py` uses `loadgen.py` to generate load on the services under test. 
 9. **Observation**: 
@@ -23,7 +23,3 @@
 * Experiment data is stored and retrieved using `store.py` for persistent storage. 
 12. **Reporting**: 
 * After the experiment, `report.py` compiles the results and generates a report. 
-13. **Pricing and Resource Utilization**: 
-* `pricing.py` calculates resource usage and costs, which can be included in the final report.
-
-

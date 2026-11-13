@@ -374,7 +374,6 @@ experiment:
           label: recommendation
           interval: 1s
   sue:
-    compose: opentelemetry-demo/docker-compose.yml
     exclude: [loadgenerator]
     required:
       - {namespace: system-under-evaluation, name: prometheus}

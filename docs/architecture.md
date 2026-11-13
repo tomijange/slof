@@ -8,10 +8,10 @@
 |---|---|
 | `oxn/cli/` | `main.py` (entry point), `argparser.py`, `installer.py` (`oxn setup`) |
 | `oxn/core/` | `engine.py`, `runner.py`, `treatments.py`, `validation.py`, `context.py` |
-| `oxn/orchestration/` | `kubernetes_orchestrator.py`, `deployment.py`, `cluster_proxy.py`, `docker_orchestration.py` |
+| `oxn/orchestration/` | `kubernetes_orchestrator.py`, `deployment.py`, `cluster_proxy.py` |
 | `oxn/loadgen/` | `locust_kubernetes.py`, `config_load_generator.py`, `file_load_generator.py`, `loadgen_config.py` |
 | `oxn/observability/` | `prometheus.py`, `jaeger.py`, `observer.py`, `responses.py` |
-| `oxn/reporting/` | `report.py`, `store.py`, `pricing.py` |
+| `oxn/reporting/` | `report.py`, `store.py` |
 | `oxn/common/` | `errors.py`, `utils.py`, `settings.py`, `log.py` |
 | `oxn/models/` | `experiment_spec.py` (typed model of an experiment spec) and base classes for orchestrators, load generators, treatments and responses |
 | `oxn/steering/` | Sidecar container and controller that apply network treatments inside pods |
@@ -29,7 +29,7 @@
 
 1. **Set up.** The engine creates a `KubernetesOrchestrator` from `kubernetes_orchestrator.py` and an `ExperimentRunner` from `runner.py`.
 2. **Deploy.** If the spec has a `deployment` section, `deployment.py` installs the stack.
-3. **Compile-time treatments.** The runner applies treatments that change the SUE's configuration before the load starts. On Kubernetes they patch the deployed SUE and restart its pods. With Docker Compose they run before step 2, because they change what gets built. The orchestrator then checks that the SUE is ready.
+3. **Compile-time treatments.** The runner applies treatments that change the SUE's configuration before the load starts. They patch the deployed SUE and restart its pods. The orchestrator then checks that the SUE is ready.
 4. **Load.** The engine creates a `LocustKubernetesLoadgenerator` from `locust_kubernetes.py`, which starts Locust in the cluster.
 5. **Runtime treatments.** The runner applies each treatment from `treatments.py` and then cleans it up.
 6. **Observe.** `observer.py` collects the response variables from `responses.py`, which query `prometheus.py` and `jaeger.py`.
@@ -42,7 +42,6 @@ After the last run, the report is written to the `--report` directory.
 
 | Module | Purpose |
 |---|---|
-| `orchestration/docker_orchestration.py` | Older Docker Compose orchestrator, selected with `orchestrator: docker-compose` |
 | `loadgen/config_load_generator.py`, `loadgen/file_load_generator.py` | Older load generators, imported by the engine but not used to run experiments |
 
 ## Files read at runtime

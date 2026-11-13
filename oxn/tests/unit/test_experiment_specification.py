@@ -1,6 +1,5 @@
 import os
 import unittest
-from types import SimpleNamespace
 from unittest import mock
 
 import yaml
@@ -18,7 +17,6 @@ from oxn.models.experiment_spec import (
     ServiceReference,
     TraceResponseDescription,
 )
-from oxn.orchestration.docker_orchestration import DockerComposeOrchestrator
 from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 from oxn.tests.unit.spec_mocks import experiment_spec_mock, kubernetes_experiment
 
@@ -62,12 +60,12 @@ class SpecificationTest(unittest.TestCase):
             validate_syntax(self.loaded_spec)
 
     def test_syntax_bad_entry_with_two_names(self):
-        self.loaded_spec["experiment"]["treatments"][0]["second_name"] = {"action": "pause", "params": {}}
+        self.loaded_spec["experiment"]["treatments"][0]["second_name"] = {"action": "empty", "params": {}}
         with self.assertRaises(OxnException):
             validate_syntax(self.loaded_spec)
 
     def test_syntax_bad_name_inside_of_named_entry(self):
-        self.loaded_spec["experiment"]["treatments"][0]["pause_treatment"]["name"] = "other_name"
+        self.loaded_spec["experiment"]["treatments"][0]["empty_treatment"]["name"] = "other_name"
         with self.assertRaises(OxnException):
             validate_syntax(self.loaded_spec)
 
@@ -95,9 +93,9 @@ class SpecificationTest(unittest.TestCase):
 
     def test_it_names_treatments(self):
         treatment = validate_syntax(self.loaded_spec).experiment.treatments[0]
-        self.assertEqual(treatment.name, "pause_treatment")
-        self.assertEqual(treatment.action, "pause")
-        self.assertEqual(treatment.params, {"duration": "30s", "service_name": "frontend"})
+        self.assertEqual(treatment.name, "empty_treatment")
+        self.assertEqual(treatment.action, "empty")
+        self.assertEqual(treatment.params, {"duration": "30s"})
 
     def test_it_applies_defaults_for_optional_sections(self):
         self.loaded_spec["experiment"].pop("treatments")
@@ -171,14 +169,6 @@ class SpecConsumersTest(unittest.TestCase):
         self.assertTrue(orchestrator.ready(expected_services=None))
         orchestrator.kube_client.read_namespaced_service.assert_any_call("grafana", "monitoring")
         self.assertEqual(orchestrator.required_services[1], ServiceReference(namespace="monitoring", name="node-exporter"))
-
-    def test_the_docker_orchestrator_reads_the_sue_section(self):
-        # a stand-in, as the class does not implement all abstract methods of Orchestrator and can't be instantiated
-        orchestrator = SimpleNamespace(experiment_config=validate_syntax(yaml.safe_load(experiment_spec_mock)))
-        DockerComposeOrchestrator._read_orchestration_section(orchestrator)
-        self.assertEqual(orchestrator.exclude, ["loadgenerator"])
-        self.assertEqual(orchestrator.include, ["otelcol"])
-        self.assertTrue(orchestrator.docker_compose_path.endswith("docker-compose.yml"))
 
     def test_the_semantic_validator_reports_unknown_names(self):
         validator = SemanticValidator.__new__(SemanticValidator)

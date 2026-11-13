@@ -17,6 +17,7 @@ This fork builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legle
 | 9 | [Repository layout](09-repository-layout.md) | Values and dashboard in `deployments/`, obsolete scripts removed, new Makefile targets |
 | 10 | [Documentation site](10-documentation-site.md) | A Sphinx site with guides and tool pages instead of one README |
 | 11 | [Specs for the current stack](11-current-stack-specs.md) | Every spec has a `deployment` section and uses the metric names of the current charts. New Experiment design page |
+| 12 | [Removal of Docker Compose support](12-remove-docker-compose.md) | Kubernetes only. The Compose orchestrator, Docker-only treatments, `--accounting` and `sue.compose` are gone |
 
 ## GOXN and now
 
@@ -25,13 +26,15 @@ What differs from GOXN today, by area. "Changed in" points to the change pages, 
 | Area | GOXN | Now | Changed in | Documented in |
 |---|---|---|---|---|
 | Code layout | About 25 modules side by side in `oxn/` | Packages by responsibility | [1](01-package-layout.md#packages) | [Architecture](../architecture.md#packages) |
-| Spec format | `schema` validation, unknown keys ignored | Typed pydantic model, unknown keys rejected | [2](02-typed-specs.md#the-spec-model) | [Experiments](../experiments.md#spec-structure) |
-| Orchestrators | `kubernetes`, with no-op deploy and teardown, and `docker-compose` | `kubernetes`, which deploys and tears down the spec's stack, and `docker-compose` | [3](03-deployment-section.md#what-deploy-and-teardown-do) | [Deployments](../deployments.md), [Architecture](../architecture.md#one-experiment-run) |
+| Spec format | `schema` validation, unknown keys ignored, `sue.compose` required | Typed pydantic model, unknown keys rejected, no `compose` | [2](02-typed-specs.md#the-spec-model), [12](12-remove-docker-compose.md#spec) | [Experiments](../experiments.md#spec-structure) |
+| Orchestrators | `kubernetes`, with no-op deploy and teardown, and `docker-compose` | `kubernetes`, which deploys and tears down the spec's stack | [3](03-deployment-section.md#what-deploy-and-teardown-do), [12](12-remove-docker-compose.md#orchestrator) | [Deployments](../deployments.md), [Architecture](../architecture.md#one-experiment-run) |
 | SUE lifecycle | `run_experiment_suite.sh` runs `helm` by hand | A `deployment` section in every spec, `oxn deploy` and `oxn teardown` | [3](03-deployment-section.md#what-deploy-and-teardown-do), [11](11-current-stack-specs.md#deployment-sections) | [Deployments](../deployments.md#shipped-setups) |
 | Run order on Kubernetes | Compile-time treatments, then deploy | Deploy, then compile-time treatments | [3](03-deployment-section.md#changed-run-order-on-kubernetes) | [Architecture](../architecture.md#one-experiment-run) |
 | Cluster access | Direct HTTP to pod and cluster IPs, `oxn` inside the cluster network | Kubernetes API server proxy | [4](04-api-server-proxy.md#the-cluster-proxy) | [Deployments](../deployments.md#reaching-the-cluster-network) |
 | Cluster setup | `setup/*.sh` and README commands | `oxn setup` | [5](05-oxn-setup.md#the-command) | [Getting started](../getting-started.md#prepare-the-cluster) |
+| Treatments | Kubernetes and Docker-only treatments | Kubernetes treatments only | [12](12-remove-docker-compose.md#treatments) | [Experiments](../experiments.md#treatments) |
 | Missing data | A response without data aborts the run | It is skipped with a warning | [6](06-skip-missing-responses.md#skipping-responses-without-data) | [Experiments](../experiments.md#results) |
+| Resource accounting | `--accounting` with Docker container statistics | Removed, CPU and energy come from responses | [12](12-remove-docker-compose.md#resource-accounting) | [Experiment design](../experiment-design.md#responses) |
 | Logging | One uncoloured format, some modules on the root logger | Module loggers, coloured console, timings | [7](07-logging.md#console-format) | [Experiments](../experiments.md#running-an-experiment) |
 | Chart versions | kube-prometheus-stack 62.5.1, OpenTelemetry Demo 0.36.4, old Kepler chart | 92.16.1, 0.42.6, Kepler 0.12.0 | [8](08-stack-versions.md#summary) | [Tools](../tools/prometheus.md), [Kepler](../tools/kepler.md#metrics), [OpenTelemetry Demo](../tools/opentelemetry-demo.md) |
 | Metric names in specs | `jaeger-query`, `kepler_container_*_joules_total`, demo 1.x names | Names of the current charts | [8](08-stack-versions.md#experimentstestyml), [11](11-current-stack-specs.md#metric-names) | [Kepler](../tools/kepler.md#metrics), [Experiment design](../experiment-design.md#responses) |
@@ -45,7 +48,7 @@ What the changes so far leave open:
 
 | Limitation | From |
 |---|---|
-| Several unit tests from GOXN fail or do not import. | [1](01-package-layout.md#known-limitations) |
+| Several unit tests from GOXN fail or do not import. [Removal of Docker Compose support](12-remove-docker-compose.md) removed some of them. | [1](01-package-layout.md#known-limitations) |
 | The debug configuration in `.vscode/launch.json` still runs the removed `experiments/debug.yml`. | [9](09-repository-layout.md#known-limitations) |
 
 ## Writing a change page
@@ -79,4 +82,5 @@ When a later change makes part of an older page wrong, leave the old text, add a
 09-repository-layout
 10-documentation-site
 11-current-stack-specs
+12-remove-docker-compose
 ```

@@ -12,14 +12,9 @@ import hashlib
 import datetime
 from typing import List
 
-import psutil
-
-import docker
-
 from oxn.common.errors import OxnException
 from oxn.core.treatments import (
     DeploymentScaleTreatment,
-    EmptyDockerComposeTreatment,
     EmptyKubernetesTreatment,
     EmptyTreatment,
     KubernetesApplySecurityContextTreatment,
@@ -28,20 +23,11 @@ from oxn.core.treatments import (
     KubernetesNetworkDelayTreatment,
     KubernetesNetworkPacketLossTreatment,
     KubernetesPrometheusIntervalTreatment,
-    PauseTreatment,
-    PacketLossTreatment,
-    PrometheusIntervalTreatment,
-    StressTreatment,
-    TailSamplingTreatment,
-    KillTreatment,
-    MetricsExportIntervalTreatment,
-    ProbabilisticSamplingTreatment,
     KubernetesProbabilisticHeadSamplingTreatment,
     KubernetesCorruptPacketTreatment,
 )
 from oxn.common import utils
 from oxn.observability.observer import Observer
-from oxn.reporting.pricing import Accountant
 from oxn.common.utils import utc_timestamp
 from oxn.models.treatment import Treatment
 from oxn.models.orchestrator import Orchestrator
@@ -63,21 +49,12 @@ class ExperimentRunner:
     """
     # TODO: make names less ambiguous
     treatment_keys = {
-        "kill": KillTreatment,
-        "pause": PauseTreatment,
-        "loss": PacketLossTreatment,
         "kubernetes_loss": KubernetesNetworkPacketLossTreatment,
         "empty": EmptyTreatment,
         "empty_kubernetes": EmptyKubernetesTreatment,
-        "empty_docker_compose": EmptyDockerComposeTreatment,
         "delay": KubernetesNetworkDelayTreatment,
-        "stress": StressTreatment,
-        "sampling": PrometheusIntervalTreatment,
         "kubernetes_prometheus_interval": KubernetesPrometheusIntervalTreatment,
-        "tail": TailSamplingTreatment,
-        "probl": ProbabilisticSamplingTreatment,
         "kube_probl": KubernetesProbabilisticHeadSamplingTreatment,
-        "otel_metrics_interval": MetricsExportIntervalTreatment,
         "kubernetes_otel_metrics_interval": KubernetesMetricsExportIntervalTreatment,
         "scale_deployment": DeploymentScaleTreatment,
         "security_context_kubernetes": KubernetesApplySecurityContextTreatment,
@@ -93,7 +70,6 @@ class ExperimentRunner:
             config_filename=None,
             additional_treatments=None,
             random_treatment_order=False,
-            accountant_names=None,
     ):
         self.orchestrator = orchestrator
         self.config = config
@@ -116,14 +92,6 @@ class ExperimentRunner:
         """Additional user-supplied treatments"""
         self.observer = Observer(orchestrator=self.orchestrator, config=self.config)
         """Observer for response variables"""
-        self.accountant = None
-        if accountant_names:
-            self.accountant = Accountant(
-                client=docker.from_env(),
-                container_names=accountant_names,
-                process=psutil.Process(),
-            )
-        """Accountant to determine resource expenditure during experiments"""
         self._compute_hash()
         """Compute unique identifiers for runs and experiment config"""
         self._extend_treatments()
@@ -221,9 +189,6 @@ class ExperimentRunner:
         Execute one run of the experiment
         A single experiment run is defined as one execution of all treatments and one observation of all responses
         """
-        if self.accountant:
-            self.accountant.read_all_containers()
-            self.accountant.read_oxn()
         ttw_left = self.observer.time_to_wait_left()
         logger.info(f"Sleeping for {ttw_left} seconds")
         time.sleep(ttw_left)
@@ -246,13 +211,6 @@ class ExperimentRunner:
         self.observer.observe()
         logger.info("Observed response variables")
         self._label()
-        if self.accountant:
-            self.accountant.read_all_containers()
-            logger.debug(
-                f"Read container resource data for {self.accountant.container_names}"
-            )
-            self.accountant.read_oxn()
-            self.accountant.consolidate()
 
     def clear(self) -> None:
         """Clear the storage of the runner"""

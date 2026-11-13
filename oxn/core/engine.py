@@ -12,7 +12,6 @@ from typing import Optional
 import yaml
 
 from oxn.core.runner import ExperimentRunner
-from oxn.orchestration.docker_orchestration import DockerComposeOrchestrator
 from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 from oxn.reporting.report import Reporter
 from oxn.reporting.store import write_dataframe
@@ -71,7 +70,6 @@ class Engine:
         runs=None,
         orchestration_timeout=None,
         randomize=False,
-        accounting=False,
         keep_sue=False,
     ):
         """Run an experiment n times"""
@@ -81,47 +79,27 @@ class Engine:
             logger.info(f"Experiment run {idx + 1} of {runs}")
             run_start = time.monotonic()
             assert self.spec
-            if self.spec.experiment.orchestrator == "docker-compose":
-                self.orchestrator = DockerComposeOrchestrator(
-                    experiment_config=self.spec,
-                )
-            else:
-                self.orchestrator = KubernetesOrchestrator(
-                    experiment_config=self.spec,
-                )
-            names = []
-            """ (
-                self.orchestrator.translate_compose_names(
-                    self.orchestrator.sue_service_names
-                )
-                if accounting
-                else []
-            ) """
+            self.orchestrator = KubernetesOrchestrator(
+                experiment_config=self.spec,
+            )
             self.runner = ExperimentRunner(
                 config=self.spec,
                 config_filename=self.config,
                 additional_treatments=self.additional_treatments,
                 random_treatment_order=randomize,
-                accountant_names=names,
                 orchestrator=self.orchestrator,
             )
             logger.info(f"Run id is {self.runner.short_id}")
-            # Kubernetes treatments patch the running SUE, Docker Compose treatments change what gets built
-            deploy_first = self.spec.experiment.orchestrator == "kubernetes"
-            if not deploy_first:
-                self.runner.execute_compile_time_treatments()
             try:
                 self.orchestrator.orchestrate()
             except OxnException:
-                if not deploy_first:
-                    self.runner.clean_compile_time_treatments()
                 if not keep_sue:
                     self.orchestrator.teardown()
                 raise
             # from here on main() tears down the SUE if anything goes wrong
             self.sue_running = True
-            if deploy_first:
-                self.runner.execute_compile_time_treatments()
+            # compile-time treatments patch the deployed SUE, so they run after orchestration
+            self.runner.execute_compile_time_treatments()
             if not self.orchestrator.ready(expected_services=None, timeout=orchestration_timeout):
                 self.runner.clean_compile_time_treatments()
                 raise OrchestrationException(
@@ -184,9 +162,6 @@ class Engine:
                     else:
                         self.reporter.add_loadgen_data_kubernetes_locust(self.generator, self.runner)
                     logger.debug("Added load generation data")
-                    if accounting:
-                        self.reporter.add_accountant_data(runner=self.runner)
-                        logger.debug("Added accounting data")
             if not keep_sue:
                 self.orchestrator.teardown()
                 logger.info("Stopped sue")

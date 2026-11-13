@@ -214,8 +214,6 @@ class DeploymentDescription(SpecModel):
 class Sue(SpecModel):
     """The system under experiment as seen by the orchestrators"""
 
-    compose: str
-    """Path of the docker compose file, not used on kubernetes"""
     exclude: List[str] = Field(default_factory=list)
     include: List[str] = Field(default_factory=list)
     required: List[ServiceReference] = Field(default_factory=list)
@@ -247,7 +245,7 @@ class Experiment(SpecModel):
     """The experiment section, which is the only top level key of a spec"""
 
     version: str
-    orchestrator: Literal["docker-compose", "kubernetes"]
+    orchestrator: Literal["kubernetes"]
     services: Optional[Services] = None
     responses: List[ResponseDescription]
     treatments: List[Annotated[TreatmentDescription, BeforeValidator(_flatten_entry("name"))]] = Field(

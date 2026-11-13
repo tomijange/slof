@@ -360,7 +360,6 @@ experiment:
           evaluation_interval: 30s
           scrape_timeout: 3s
   sue:
-    compose: opentelemetry-demo/docker-compose.yml
     exclude: [loadgenerator]
     required:
       - {namespace: system-under-evaluation, name: prometheus}

@@ -92,39 +92,11 @@ class CommandLineTests(unittest.TestCase):
         self.assertTrue(parsed.randomize)
 
     @mock.patch("os.path.exists")
-    @mock.patch("argparse.ArgumentParser._print_message", mock.MagicMock)
-    def test_it_throws_on_accounting_without_report(self, mock_exists):
-        mock_exists.return_value = True
-        test_args = [self.experiment_spec_mock, "--accounting"]
-        with self.assertRaises(SystemExit):
-            parse_oxn_args(args=test_args)
-
-    @mock.patch("os.path.exists")
-    def test_it_accepts_accounting_with_report(self, mock_exists):
-        mock_exists.return_value = True
-        test_args = [
-            self.experiment_spec_mock,
-            "--accounting",
-            "--report",
-            "some_example_report.yaml",
-        ]
-        args = parse_oxn_args(args=test_args)
-        self.assertTrue(args.accounting)
-        self.assertTrue(args.report)
-
-    @mock.patch("os.path.exists")
     def test_it_has_default_timeout(self, mock_exists):
         mock_exists.return_value = True
         test_args = [self.experiment_spec_mock]
         parsed = parser.parse_args(test_args)
         self.assertTrue(parsed.timeout == "1m")
-
-    @mock.patch("os.path.exists")
-    def test_it_has_default_accounting(self, mock_exists):
-        mock_exists.return_value = True
-        test_args = [self.experiment_spec_mock]
-        parsed = parser.parse_args(test_args)
-        self.assertFalse(parsed.accounting)
 
     @mock.patch("os.path.exists")
     def test_it_has_default_randomize(self, mock_exists):

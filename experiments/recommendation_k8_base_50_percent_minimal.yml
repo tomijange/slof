@@ -65,7 +65,6 @@ experiment:
         params:
           duration: 60m
   sue:
-    compose: opentelemetry-demo/docker-compose.yml
     exclude: [loadgenerator]
     required:
       - {namespace: system-under-evaluation, name: prometheus}

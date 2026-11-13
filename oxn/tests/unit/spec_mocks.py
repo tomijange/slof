@@ -3,7 +3,7 @@
 experiment_spec_mock = """
     experiment:
       version: 0.0.1
-      orchestrator: docker-compose
+      orchestrator: kubernetes
       responses:
         - my_metric_response_no_params:
             metric_name: prometheus_metric
@@ -26,13 +26,11 @@ experiment_spec_mock = """
             left_window: 5m
             right_window: 2m
       treatments:
-         - pause_treatment:
-            action: pause
+         - empty_treatment:
+            action: empty
             params:
                 duration: 30s
-                service_name: frontend
       sue:
-        compose: /Users/witch/opentelemetry-demo/docker-compose.yml
         exclude: [loadgenerator]
         include: [otelcol]
       loadgen:
@@ -60,7 +58,6 @@ experiment:
         right_window: 30s
         limit: 1000
   sue:
-    compose: /Users/witch/opentelemetry-demo/docker-compose.yml
     exclude: [loadgenerator]
   loadgen:
     run_time: 30s
@@ -96,7 +93,6 @@ experiment:
         action: empty
         params: {duration: 1m}
   sue:
-    compose: opentelemetry-demo/docker-compose.yml
     exclude: [loadgenerator]
     required: [{namespace: monitoring, name: grafana}, {namespace: monitoring, name: node-exporter}]
   loadgen:

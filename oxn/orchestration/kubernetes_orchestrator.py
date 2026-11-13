@@ -99,10 +99,6 @@ class KubernetesOrchestrator(Orchestrator):
             return
         self.deployment.teardown()
 
-    def translate_compose_names(self, compose_names: List[str]):
-        logger.info("translate_compose_names noop implementation")
-        pass
-
     def translate_container_names(self, container_names: List[str]):
         logger.info("translate_container_names noop implementation")
         pass

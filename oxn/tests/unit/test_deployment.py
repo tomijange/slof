@@ -207,10 +207,6 @@ class EngineOrderTest(unittest.TestCase):
         self.assertLess(names.index("orchestrator().orchestrate"), names.index("runner().execute_compile_time_treatments"))
         self.assertLess(names.index("runner().execute_compile_time_treatments"), names.index("generator"))
 
-    def test_docker_compose_treatments_run_before_the_sue_is_built(self):
-        names = self._call_order("docker-compose", "DockerComposeOrchestrator")
-        self.assertLess(names.index("runner().execute_compile_time_treatments"), names.index("orchestrator().orchestrate"))
-
 
 class EngineMissingResponseTest(unittest.TestCase):
     def test_responses_without_data_are_neither_stored_nor_reported(self):
