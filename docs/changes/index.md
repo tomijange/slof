@@ -12,6 +12,7 @@ This fork builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legle
 | 4 | [Reaching the cluster through the API server proxy](04-api-server-proxy.md) | `oxn` runs anywhere `kubectl` works. Failed `tc` commands are logged |
 | 5 | [`oxn setup`](05-oxn-setup.md) | One command installs OpenEBS, Prometheus and Kepler in order, instead of `setup/*.sh` |
 | 6 | [Missing response data no longer aborts the run](06-skip-missing-responses.md) | A response without data is skipped with a warning |
+| 7 | [Logging](07-logging.md) | Module loggers, a coloured console format, timings for every phase |
 
 ## GOXN and now
 
@@ -26,6 +27,7 @@ What differs from GOXN today, by area. "Changed in" points to the change pages, 
 | Cluster access | Direct HTTP to pod and cluster IPs, `oxn` inside the cluster network | Kubernetes API server proxy | [4](04-api-server-proxy.md#the-cluster-proxy) | [Deployments](../deployments.md#reaching-the-cluster-network) |
 | Cluster setup | `setup/*.sh` and README commands | `oxn setup` | [5](05-oxn-setup.md#the-command) | [Getting started](../getting-started.md#prepare-the-cluster) |
 | Missing data | A response without data aborts the run | It is skipped with a warning | [6](06-skip-missing-responses.md#skipping-responses-without-data) | [Experiments](../experiments.md#results) |
+| Logging | One uncoloured format, some modules on the root logger | Module loggers, coloured console, timings | [7](07-logging.md#console-format) | [Experiments](../experiments.md#running-an-experiment) |
 | Repository layout | Values and dashboard in the root, helper scripts | `deployments/`, no helper scripts | [3](03-deployment-section.md#removed-scripts), [4](04-api-server-proxy.md#the-cluster-proxy), [5](05-oxn-setup.md#the-command) | [Getting started](../getting-started.md) |
 
 ## Open limitations
@@ -64,4 +66,5 @@ When a later change makes part of an older page wrong, leave the old text, add a
 04-api-server-proxy
 05-oxn-setup
 06-skip-missing-responses
+07-logging
 ```
