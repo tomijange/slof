@@ -1,29 +1,25 @@
-""" 
+"""
 Purpose: Core logic for executing experiments.
 Functionality: Manages the orchestration, execution, and observation of experiments.
 Connection: Central component that coordinates between treatments, load generation, and response observation.
 
- """
+"""
 
 import logging
 import time
 from enum import Enum
 from typing import Optional
 
-import yaml
-
+from oxn.common.errors import OrchestrationException, OxnException
+from oxn.common.utils import utc_timestamp
+from oxn.core.context import Context
 from oxn.core.runner import ExperimentRunner
+from oxn.core.validation import load_experiment_specification
+from oxn.loadgen.locust_kubernetes import LocustKubernetesLoadgenerator
+from oxn.models.experiment_spec import ExperimentSpec
 from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 from oxn.reporting.report import Reporter
 from oxn.reporting.store import write_dataframe
-from oxn.loadgen.config_load_generator import ConfigLoadGenerator
-from oxn.loadgen.file_load_generator import LocustFileLoadgenerator
-from oxn.loadgen.locust_kubernetes import LocustKubernetesLoadgenerator
-from oxn.common.utils import utc_timestamp
-from oxn.core.validation import load_experiment_specification
-from oxn.core.context import Context
-from oxn.common.errors import OxnException, OrchestrationException
-from oxn.models.experiment_spec import ExperimentSpec
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +102,7 @@ class Engine:
     def run(
         self,
         runs=None,
-        orchestration_timeout=None,
+        orchestration_timeout: float = 60,
         randomize=False,
     ):
         """Run an experiment n times"""
@@ -182,17 +178,11 @@ class Engine:
                             treatment=treatment,
                             response=response,
                         )
-                        logger.debug(
-                            f"Gathered interaction data for {treatment} and {response}"
-                        )
-                    self.reporter.assemble_interaction_data(
-                        run_key=self.runner.short_id
-                    )
+                        logger.debug(f"Gathered interaction data for {treatment} and {response}")
+                    self.reporter.assemble_interaction_data(run_key=self.runner.short_id)
                     logger.debug("Assembled all interaction data")
                     if self.generator.env is not None:
-                        self.reporter.add_loadgen_data(
-                            runner=self.runner, request_stats=self.generator.env.stats
-                        )
+                        self.reporter.add_loadgen_data(runner=self.runner, request_stats=self.generator.env.stats)
                     else:
                         self.reporter.add_loadgen_data_kubernetes_locust(self.generator, self.runner)
                     logger.debug("Added load generation data")

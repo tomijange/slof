@@ -27,7 +27,7 @@ class KubernetesMetricsExportIntervalTreatment(CompileTimeTreatment):
         super().__init__(*args, **kwargs)
         self.init_env_value = None
         self.env_name = "OTEL_METRIC_EXPORT_INTERVAL"
-        
+
     def action(self):
         return "kubernetes_otel_metrics_interval"
 
@@ -39,30 +39,36 @@ class KubernetesMetricsExportIntervalTreatment(CompileTimeTreatment):
         self.namespace = self.config.get("namespace")
         self.label_selector = self.config.get("label_selector")
         self.label = self.config.get("label")
-        self.interval_ms = self.config.get("interval_ms")
+        self.interval_ms = self.config["interval_ms"]
 
         assert isinstance(self.orchestrator, KubernetesOrchestrator)
-        
+
         self.deployment = self.orchestrator.get_deployment(self.namespace, self.label_selector, self.label)
-        
-        deployment_environment_variables = self.orchestrator.get_deployment_env_parameters(
-            deployment=self.deployment
-        )
-        
+
+        deployment_environment_variables = self.orchestrator.get_deployment_env_parameters(deployment=self.deployment)
+
         # get self.env_name from the deployments environment variables
         for env_var in deployment_environment_variables:
             if env_var.name == self.env_name:
                 self.init_env_value = env_var.value
-                break 
+                break
 
         self.deployment = self.orchestrator.get_deployment(self.namespace, self.label_selector, self.label)
+        assert self.deployment.metadata is not None
         result = self.orchestrator.set_deployment_env_parameter(
             deployment=self.deployment,
             environment_variable_name=self.env_name,
             environment_variable_value=str(int(self.interval_ms)),
         )
-        
-        logger.info(f"Environment variable '{self.env_name} set to '{self.interval_ms}'ms for the deployment '{self.deployment.metadata.name}'.")
+        if not result:
+            logger.error(
+                f"Failed to set environment variable '{self.env_name}' to '{self.interval_ms}'ms for the deployment '{self.deployment.metadata.name}'."
+            )
+            return
+
+        logger.info(
+            f"Environment variable '{self.env_name} set to '{self.interval_ms}'ms for the deployment '{self.deployment.metadata.name}'."
+        )
 
         time.sleep(3)
 
@@ -72,7 +78,6 @@ class KubernetesMetricsExportIntervalTreatment(CompileTimeTreatment):
             logger.info(f"Waiting for deployment {self.deployment.metadata.name} to be ready")
             time.sleep(2)
 
-
     def clean(self) -> None:
         if self.init_env_value is None:
             return
@@ -81,6 +86,7 @@ class KubernetesMetricsExportIntervalTreatment(CompileTimeTreatment):
         """ 
         TODO: uncomment this code before commit!
         self.deployment = self.orchestrator.get_deployment(self.namespace, self.label_selector, self.label)
+        assert self.deployment.metadata is not None
         result = self.orchestrator.set_deployment_env_parameter(
             deployment=self.deployment,
             environment_variable_name=self.env_name,
@@ -116,4 +122,4 @@ class KubernetesMetricsExportIntervalTreatment(CompileTimeTreatment):
         self.config["interval_ms"] = interval_ms
 
     def _validate_orchestrator(self) -> bool:
-        return super()._validate_orchestrator(["kubernetes"])
+        return self._orchestrator_is_one_of(["kubernetes"])

@@ -92,6 +92,6 @@ prometheus:
     resources:
       limits:
         memory: 6Gi
-#opensearch:
+# opensearch:
 #  persistence:
 #    enabled: true

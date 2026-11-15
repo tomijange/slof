@@ -8,7 +8,7 @@ from kubernetes.client.exceptions import ApiException
 from oxn.common.errors import DeploymentException, OxnException
 from oxn.core.engine import Engine, Phase
 from oxn.core.validation import load_experiment_specification, read_experiment_specification, validate_syntax
-from oxn.models.experiment_spec import DeploymentDescription
+from oxn.models.experiment_spec import DeploymentDescription, HelmRelease
 from oxn.orchestration.deployment import Deployment
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -180,7 +180,9 @@ class ShippedExperimentsTest(unittest.TestCase):
                 deployment = Deployment.from_experiment_spec(load_experiment_specification(path))
                 if deployment is None:
                     continue
-                self.assertEqual(deployment.steps[-1].release, "astronomy-shop")
+                last_step = deployment.steps[-1]
+                assert isinstance(last_step, HelmRelease)
+                self.assertEqual(last_step.release, "astronomy-shop")
                 for step in deployment.steps:
                     for local_path in getattr(step, "values", []) + getattr(step, "paths", []):
                         self.assertTrue(os.path.exists(os.path.join(REPO_ROOT, local_path)), local_path)
@@ -194,9 +196,11 @@ class EngineOrderTest(unittest.TestCase):
         engine = Engine(configuration_path="spec.yml", report_path="reports/")
         engine.spec = mock.MagicMock()
         engine.spec.experiment.orchestrator = orchestrator
-        with mock.patch(f"oxn.core.engine.{orchestrator_class}", calls.orchestrator), mock.patch(
-            "oxn.core.engine.LocustKubernetesLoadgenerator", calls.generator
-        ), mock.patch("oxn.core.engine.ExperimentRunner", calls.runner):
+        with (
+            mock.patch(f"oxn.core.engine.{orchestrator_class}", calls.orchestrator),
+            mock.patch("oxn.core.engine.LocustKubernetesLoadgenerator", calls.generator),
+            mock.patch("oxn.core.engine.ExperimentRunner", calls.runner),
+        ):
             with self.assertRaises(KeyboardInterrupt):
                 engine.run(runs=1, orchestration_timeout=1)
         self.assertIs(engine.phase, Phase.PREPARATION)
@@ -204,7 +208,9 @@ class EngineOrderTest(unittest.TestCase):
 
     def test_kubernetes_treatments_and_the_load_generator_need_the_deployed_sue(self):
         names = self._call_order("kubernetes", "KubernetesOrchestrator")
-        self.assertLess(names.index("orchestrator().orchestrate"), names.index("runner().execute_compile_time_treatments"))
+        self.assertLess(
+            names.index("orchestrator().orchestrate"), names.index("runner().execute_compile_time_treatments")
+        )
         self.assertLess(names.index("runner().execute_compile_time_treatments"), names.index("generator"))
 
 
@@ -221,11 +227,12 @@ class EngineMissingResponseTest(unittest.TestCase):
         engine.spec = mock.MagicMock()
         engine.spec.experiment.orchestrator = "kubernetes"
         engine.reporter = mock.MagicMock()
-        with mock.patch("oxn.core.engine.KubernetesOrchestrator"), mock.patch(
-            "oxn.core.engine.LocustKubernetesLoadgenerator"
-        ), mock.patch("oxn.core.engine.ExperimentRunner", return_value=runner), mock.patch(
-            "oxn.core.engine.write_dataframe"
-        ) as write_dataframe:
+        with (
+            mock.patch("oxn.core.engine.KubernetesOrchestrator"),
+            mock.patch("oxn.core.engine.LocustKubernetesLoadgenerator"),
+            mock.patch("oxn.core.engine.ExperimentRunner", return_value=runner),
+            mock.patch("oxn.core.engine.write_dataframe") as write_dataframe,
+        ):
             engine.run(runs=1, orchestration_timeout=1)
         self.assertEqual([c.kwargs["response_key"] for c in write_dataframe.call_args_list], ["captured"])
         self.assertEqual([c.kwargs["response"] for c in engine.reporter.gather_interaction.call_args_list], [captured])
@@ -242,9 +249,11 @@ class EnginePhaseTest(unittest.TestCase):
         phases = []
         enter = engine._enter
         engine._enter = lambda phase: (phases.append(phase), enter(phase))
-        with mock.patch("oxn.core.engine.KubernetesOrchestrator") as orchestrator, mock.patch(
-            "oxn.core.engine.LocustKubernetesLoadgenerator"
-        ), mock.patch("oxn.core.engine.ExperimentRunner", return_value=runner):
+        with (
+            mock.patch("oxn.core.engine.KubernetesOrchestrator") as orchestrator,
+            mock.patch("oxn.core.engine.LocustKubernetesLoadgenerator"),
+            mock.patch("oxn.core.engine.ExperimentRunner", return_value=runner),
+        ):
             orchestrator.return_value.orchestrate.side_effect = orchestrate_error
             try:
                 engine.run(runs=1, orchestration_timeout=1)
@@ -276,9 +285,7 @@ class EnginePhaseTest(unittest.TestCase):
         orchestrator.teardown.assert_not_called()
 
     def test_only_initialization_and_completed_have_no_sue(self):
-        self.assertEqual(
-            [phase for phase in Phase if not phase.sue_deployed], [Phase.INITIALIZATION, Phase.COMPLETED]
-        )
+        self.assertEqual([phase for phase in Phase if not phase.sue_deployed], [Phase.INITIALIZATION, Phase.COMPLETED])
 
     def test_only_the_load_phase_has_a_running_load_generator(self):
         self.assertEqual([phase for phase in Phase if phase.loadgen_running], [Phase.LOAD])

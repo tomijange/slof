@@ -4,7 +4,8 @@ from unittest import mock
 from kubernetes import client
 from kubernetes.client.exceptions import ApiException
 from requests import PreparedRequest, Session
-from requests.adapters import Retry
+from requests.adapters import HTTPAdapter, Retry
+from requests.structures import CaseInsensitiveDict
 
 from oxn.loadgen.locust_kubernetes import LocustKubernetesLoadgenerator
 from oxn.observability.jaeger import Jaeger
@@ -76,7 +77,9 @@ class ClusterProxySessionTests(unittest.TestCase):
 
     def test_it_mounts_retries_for_https(self):
         session = ClusterProxy(configuration()).session(max_retries=Retry(total=7))
-        self.assertEqual(session.get_adapter(API_SERVER).max_retries.total, 7)
+        adapter = session.get_adapter(API_SERVER)
+        assert isinstance(adapter, HTTPAdapter)
+        self.assertEqual(adapter.max_retries.total, 7)
 
     def test_it_sends_the_current_token_with_each_request(self):
         config = configuration(api_key={"authorization": "Bearer first"})
@@ -91,7 +94,7 @@ class ClusterProxySessionTests(unittest.TestCase):
     @staticmethod
     def _request() -> PreparedRequest:
         request = PreparedRequest()
-        request.headers = {}
+        request.headers = CaseInsensitiveDict()
         return request
 
 
@@ -115,8 +118,14 @@ class SteeringControllerTests(unittest.TestCase):
         post.return_value.status_code = 200
         post.return_value.json.return_value = {"status": "ok"}
         cases = [
-            (lambda: self.controller.set_network_loss([pod()], "eth0", "5%"), "tc qdisc add dev eth0 root netem loss random 5%"),
-            (lambda: self.controller.set_network_corruption([pod()], "eth0", "5%", "25%"), "tc qdisc add dev eth0 root netem corrupt 5% 25%"),
+            (
+                lambda: self.controller.set_network_loss([pod()], "eth0", "5%"),
+                "tc qdisc add dev eth0 root netem loss random 5%",
+            ),
+            (
+                lambda: self.controller.set_network_corruption([pod()], "eth0", "5%", "25%"),
+                "tc qdisc add dev eth0 root netem corrupt 5% 25%",
+            ),
             (lambda: self.controller.remove_network_delay([pod()], "eth0"), "tc qdisc del dev eth0 root netem"),
             (lambda: self.controller.remove_network_loss([pod()], "eth0"), "tc qdisc del dev eth0 root netem"),
             (lambda: self.controller.remove_network_corruption([pod()], "eth0"), "tc qdisc del dev eth0 root netem"),

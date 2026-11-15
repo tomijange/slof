@@ -34,14 +34,23 @@ class OrchestrationException(OxnException):
 
 class LocustException(OxnException):
     """Custom exception subclass to enforce system boundaries with respect to Locust"""
+
     pass
+
 
 class OrchestratorException(OxnException):
     """Custom exception subclass to enforce system boundaries with respect to Orchestrator"""
+
     pass
+
+
 class OrchestratorResourceNotFoundException(OxnException):
     """Custom exception subclass to enforce system boundaries with respect to Orchestrator resource not found"""
+
     pass
+
+
 class DeploymentException(OrchestrationException):
     """Custom exception subclass to enforce system boundaries with respect to deploying and tearing down the SUE"""
+
     pass

@@ -1,8 +1,8 @@
-""" 
+"""
 Purpose: Handles command-line argument parsing.
 Functionality: Defines and validates the command-line arguments required to run the experiment.
 Connection: Used by main.py to parse and validate input arguments.
- """
+"""
 
 import argparse
 import os
@@ -12,9 +12,7 @@ from oxn.common.utils import time_string_to_seconds
 
 def validate_file(file):
     if not os.path.exists(file):
-        raise argparse.ArgumentTypeError(
-            f"Experiment specification {file} does not exist"
-        )
+        raise argparse.ArgumentTypeError(f"Experiment specification {file} does not exist")
     return file
 
 
@@ -57,9 +55,7 @@ parser.add_argument(
     type=validate_file,
     help="Path to an oxn experiment specification to execute.",
 )
-parser.add_argument(
-    "--times", default=1, type=int, help="Run the experiment n times. Default is 1"
-)
+parser.add_argument("--times", default=1, type=int, help="Run the experiment n times. Default is 1")
 parser.add_argument(
     "--report",
     dest="report",
@@ -83,7 +79,7 @@ parser.add_argument(
     "--timeout",
     default="1m",
     help="Timeout after which we stop trying to build the SUE. Default is 1m",
-    type=time_string_to_seconds
+    type=time_string_to_seconds,
 )
 
 parser.add_argument(

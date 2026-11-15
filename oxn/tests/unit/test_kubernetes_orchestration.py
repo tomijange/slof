@@ -1,12 +1,11 @@
 import unittest
-import yaml
 
+import yaml
 
 from oxn.core.validation import validate_syntax
 from oxn.models.experiment_spec import ServiceReference
 from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 from oxn.tests.unit.spec_mocks import kubernetes_experiment
-from oxn.models.orchestrator import Orchestrator
 
 
 class KubernetesOrchestrationTest(unittest.TestCase):
@@ -31,9 +30,7 @@ class KubernetesOrchestrationTest(unittest.TestCase):
         self.assertTrue(self.orc.kube_client)
 
     def test_it_erros_when_not_all_required_found(self):
-        self.orc.required_services.append(
-            ServiceReference(namespace="monitoring", name="not-running-service")
-        )
+        self.orc.required_services.append(ServiceReference(namespace="monitoring", name="not-running-service"))
         with self.assertRaises(Exception):
             self.orc.ready()
 

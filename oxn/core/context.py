@@ -8,10 +8,11 @@ Module for providing an execution context to experiments
 
 heavily inspired by https://github.com/locustio/locust
 """
+
+import importlib.util
 import inspect
 import os
 import sys
-import importlib
 from typing import List
 
 from oxn.models.treatment import Treatment
@@ -30,11 +31,7 @@ class Context:
     @staticmethod
     def is_treatment_class(thing) -> bool:
         """A thing is a treatment class if it is a class, and a subclass of treatment, and not an abstract treatment"""
-        return bool(
-            inspect.isclass(thing)
-            and issubclass(thing, Treatment)
-            and not inspect.isabstract(thing)
-        )
+        return bool(inspect.isclass(thing) and issubclass(thing, Treatment) and not inspect.isabstract(thing))
 
     def load_treatment_file(self) -> List[Treatment]:
         """Load user-supplied treatments from a file"""
@@ -55,10 +52,13 @@ class Context:
                 path_index = idx
                 sys.path.insert(0, directory)
                 del sys.path[idx + 1]
-        treatment_source = importlib.machinery.SourceFileLoader(
-            os.path.splitext(treatment_file)[0], self.treatment_path
-        )
-        imported = treatment_source.load_module()
+        module_name = os.path.splitext(treatment_file)[0]
+        module_spec = importlib.util.spec_from_file_location(module_name, self.treatment_path)
+        assert module_spec is not None and module_spec.loader is not None
+        imported = importlib.util.module_from_spec(module_spec)
+        # registered like SourceFileLoader.load_module did, so the treatments can be pickled and imported again
+        sys.modules[module_name] = imported
+        module_spec.loader.exec_module(imported)
         if in_python_path:
             # cleanup
             del sys.path[0]
@@ -67,9 +67,5 @@ class Context:
             del sys.path[0]
 
         # iterate over vars of the imported module and find the treatment implementations
-        treatment_classes = [
-            value
-            for key, value in vars(imported).items()
-            if self.is_treatment_class(value)
-        ]
+        treatment_classes = [value for key, value in vars(imported).items() if self.is_treatment_class(value)]
         return treatment_classes

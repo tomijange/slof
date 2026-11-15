@@ -18,7 +18,7 @@ class KubernetesCorruptPacketTreatment(RuntimeTreatment):
 
     def preconditions(self) -> bool:
         super().preconditions()
-        #service = self.config.get("service_name")
+        # service = self.config.get("service_name")
         namespace = self.config.get("namespace")
         label_selector = self.config.get("label_selector")
         label = self.config.get("label")
@@ -30,22 +30,30 @@ class KubernetesCorruptPacketTreatment(RuntimeTreatment):
             deployment = self.orchestrator.get_deployment(namespace, label_selector, label)
 
             assert deployment
+            assert deployment.metadata is not None
 
             try:
-                response = self.orchestrator.patch_deployment_to_include_steering_sidecar_container(deployment=deployment)
+                response = self.orchestrator.patch_deployment_to_include_steering_sidecar_container(
+                    deployment=deployment
+                )
                 assert response
 
                 if not response:
-                    self.messages.append(f"Failed to patch deployment {deployment.metadata.name} in namespace {namespace} with steering sidecar container")
+                    self.messages.append(
+                        f"Failed to patch deployment {deployment.metadata.name} in namespace {namespace} with steering sidecar container"
+                    )
                     return False
             except Exception as e:
-                self.messages.append(f"Failed to patch deployment {deployment.metadata.name} in namespace {namespace} with steering sidecar container: {e}")
+                self.messages.append(
+                    f"Failed to patch deployment {deployment.metadata.name} in namespace {namespace} with steering sidecar container: {e}"
+                )
                 return False
         except Exception as e:
-            self.messages.append(f"Failed to patch deployment {deployment.metadata.name} in namespace {namespace} with steering sidecar container: {e}")
+            self.messages.append(
+                f"Failed to patch the deployment with {label_selector}={label} in namespace {namespace} with steering sidecar container: {e}"
+            )
             return False
         return True
-        
 
     def inject(self) -> None:
         namespace = self.config.get("namespace")
@@ -59,25 +67,16 @@ class KubernetesCorruptPacketTreatment(RuntimeTreatment):
         assert duration
         assert isinstance(self.orchestrator, KubernetesOrchestrator)
         deployment = self.orchestrator.get_deployment(namespace, label_selector, label)
-       
+
         assert deployment
-        
-        result = self.orchestrator.orchestrate.set_network_corruption(deployment, interface, percentage, correlation)
-        
-        
+
+        result = self.orchestrator.set_network_corruption(deployment, interface, percentage, correlation)
+
         if not result:
-            logger.error(
-                f"Failed to inject packet loss into pods in {namespace} with {label_selector}={label}."
-            )
+            logger.error(f"Failed to inject packet corruption into pods in {namespace} with {label_selector}={label}.")
             return
         logger.info(
-            f"Injected packet loss into pods in {namespace} with {label_selector}={label}. Waiting for {duration}s."
-        )
-        time.sleep(duration)
-        
-
-        logger.info(
-            f"Injected packet corruption into deployment {deployment.metadata.name}. Waiting for {duration}s."
+            f"Injected packet corruption into pods in {namespace} with {label_selector}={label}. Waiting for {duration}s."
         )
         time.sleep(duration)
 
@@ -89,16 +88,12 @@ class KubernetesCorruptPacketTreatment(RuntimeTreatment):
         assert isinstance(self.orchestrator, KubernetesOrchestrator)
         deployment = self.orchestrator.get_deployment(namespace, label_selector, label)
         assert deployment
-        result = self.orchestrator.orchestrate.remove_network_corruption(deployment, interface)
+        result = self.orchestrator.remove_network_corruption(deployment, interface)
         if not result:
-            logger.error(
-                f"Failed to remove packet loss from pods in {namespace} with {label_selector}={label}."
-            )
+            logger.error(f"Failed to remove packet corruption from pods in {namespace} with {label_selector}={label}.")
             return
-        logger.info(
-            f"Removed packet loss from pods in {namespace} with {label_selector}={label}."
-        )
-        
+        logger.info(f"Removed packet corruption from pods in {namespace} with {label_selector}={label}.")
+
     def params(self) -> dict:
         return {
             "namespace": str,
@@ -109,14 +104,14 @@ class KubernetesCorruptPacketTreatment(RuntimeTreatment):
             "corrupt_percentage": str,
             "corrupt_correlation": Optional[str],
         }
-        
+
     def _validate_params(self) -> bool:
         bools = []
         for key, value in self.params().items():
             # required params
             if (
-                    key in {"namespace", "label_selector", "label", "duration", "interface", "corrupt_percentage"}
-                    and key not in self.config
+                key in {"namespace", "label_selector", "label", "duration", "interface", "corrupt_percentage"}
+                and key not in self.config
             ):
                 self.messages.append(f"Parameter {key} has to be supplied")
                 bools.append(False)
@@ -126,9 +121,7 @@ class KubernetesCorruptPacketTreatment(RuntimeTreatment):
         for key, value in self.config.items():
             if key == "duration":
                 if not validate_time_string(value):
-                    self.messages.append(
-                        f"Parameter {key} has to match {time_string_format_regex}"
-                    )
+                    self.messages.append(f"Parameter {key} has to match {time_string_format_regex}")
                     bools.append(False)
             if key in {"corrupt_percentage", "corrupt_correlation"}:
                 format_regex = r"^[1-9][0-9]?\%$|^100\%$"
@@ -136,11 +129,11 @@ class KubernetesCorruptPacketTreatment(RuntimeTreatment):
                     self.messages.append(f"Parameter {key} has to match {format_regex}")
                     bools.append(False)
         return all(bools)
-    
+
     def _transform_params(self) -> None:
         relative_time_string = self.config.get("duration")
         relative_time_seconds = time_string_to_seconds(relative_time_string)
         self.config["duration_seconds"] = relative_time_seconds
-        
+
     def _validate_orchestrator(self) -> bool:
-        return super()._validate_orchestrator(["kubernetes"])
+        return self._orchestrator_is_one_of(["kubernetes"])

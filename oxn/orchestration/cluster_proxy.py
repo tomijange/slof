@@ -6,6 +6,7 @@ Connection: Created by the KubernetesOrchestrator and used by the SteeringContro
     LocustKubernetesLoadgenerator. Do not send load generator traffic through it, as the API server would become
     part of the measured path.
 """
+
 from typing import Optional
 
 import requests
@@ -20,11 +21,11 @@ class KubeconfigTokenAuth(AuthBase):
     def __init__(self, configuration: client.Configuration):
         self.configuration = configuration
 
-    def __call__(self, request):
+    def __call__(self, r):
         token = self.configuration.get_api_key_with_prefix("authorization")
         if token:
-            request.headers["Authorization"] = token
-        return request
+            r.headers["Authorization"] = token
+        return r
 
 
 class ClusterProxy:
@@ -50,7 +51,9 @@ class ClusterProxy:
         session.auth = KubeconfigTokenAuth(configuration)
         session.verify = (configuration.ssl_ca_cert or True) if configuration.verify_ssl else False
         if configuration.cert_file:
-            session.cert = (configuration.cert_file, configuration.key_file)
+            # without a key file, the certificate file also holds the key
+            key_file = configuration.key_file
+            session.cert = (configuration.cert_file, key_file) if key_file else configuration.cert_file
         if configuration.proxy:
             session.proxies = {"https": configuration.proxy}
         if max_retries is not None:
@@ -58,4 +61,6 @@ class ClusterProxy:
         return session
 
     def _proxy_url(self, namespace: str, resource: str, name: str, port: int, path: str) -> str:
-        return f"{self.configuration.host}/api/v1/namespaces/{namespace}/{resource}/{name}:{port}/proxy/{path.lstrip('/')}"
+        return (
+            f"{self.configuration.host}/api/v1/namespaces/{namespace}/{resource}/{name}:{port}/proxy/{path.lstrip('/')}"
+        )

@@ -20,29 +20,28 @@ class KubernetesApplySecurityContextTreatment(CompileTimeTreatment):
         namespace = self.config.get("namespace")
         label_selector = self.config.get("label_selector")
         label = self.config.get("label")
-        
+
         assert namespace
         assert label_selector
         assert label
         assert self.config.get("capabilities")
         assert self.config.get("capabilities").get("add")
         assert isinstance(self.orchestrator, KubernetesOrchestrator)
-        
+
         # capabilities should now be the opisite of what was applied in inject (e.g. inject was { add: ["NET_ADMIN"] } so clean should be { remove: ["NET_ADMIN"] })
         capabilities = {"add": []}
-        
+
         error_code, error = self.orchestrator.apply_security_context_to_deployment(
-            namespace=namespace,
-            label_selector=label_selector,
-            label=label,
-            capabilities=capabilities
+            namespace=namespace, label_selector=label_selector, label=label, capabilities=capabilities
         )
-        
-        logger.info(f"Applied security context to deployment in {namespace} with {label_selector}={label} with result {error_code}: {error}")
+
+        logger.info(
+            f"Applied security context to deployment in {namespace} with {label_selector}={label} with result {error_code}: {error}"
+        )
 
     def _transform_params(self) -> None:
         pass
-    
+
     def _validate_params(self) -> bool:
         bools = []
         for key, value in self.params().items():
@@ -54,9 +53,7 @@ class KubernetesApplySecurityContextTreatment(CompileTimeTreatment):
         for key, value in self.config.items():
             if key == "duration":
                 if not validate_time_string(value):
-                    self.messages.append(
-                        f"Parameter {key} has to match {time_string_format_regex}"
-                    )
+                    self.messages.append(f"Parameter {key} has to match {time_string_format_regex}")
                     bools.append(False)
         return all(bools)
 
@@ -66,19 +63,18 @@ class KubernetesApplySecurityContextTreatment(CompileTimeTreatment):
         namespace = self.config.get("namespace")
         label_selector = self.config.get("label_selector")
         label = self.config.get("label")
-        
+
         assert namespace
         assert label_selector
         assert label
         assert capabilities and capabilities.get("add")
         assert isinstance(self.orchestrator, KubernetesOrchestrator)
         error_code, error = self.orchestrator.apply_security_context_to_deployment(
-            namespace=namespace,
-            label_selector=label_selector,
-            label=label,
-            capabilities=capabilities
+            namespace=namespace, label_selector=label_selector, label=label, capabilities=capabilities
         )
-        logger.info(f"Applied security context to deployment in {namespace} with {label_selector}={label} with result {error_code}: {error}")
+        logger.info(
+            f"Applied security context to deployment in {namespace} with {label_selector}={label} with result {error_code}: {error}"
+        )
         # TODO: check if the deployment was actually updated and if so, wait for the deployment to be ready
 
     def params(self) -> dict:

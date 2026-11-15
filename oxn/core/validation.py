@@ -4,19 +4,20 @@ Functionality: Implements syntactic and semantic validation of experiment config
 Connection: Used by the Engine to ensure the experiment configuration is correct before execution.
 
 Module to handle validation of experiment specifications"""
-from typing import Set, List
+
+from typing import Dict, List, Set
 
 import pydantic
 import yaml
 
-from oxn.models import orchestrator
+from oxn.common.errors import OxnException
 from oxn.models.experiment_spec import (
     ExperimentSpec,
     MetricResponseDescription,
     TraceResponseDescription,
+    TreatmentDescription,
 )
-
-from oxn.common.errors import OxnException
+from oxn.models.orchestrator import Orchestrator
 from oxn.observability.jaeger import Jaeger
 from oxn.observability.prometheus import Prometheus
 
@@ -24,20 +25,20 @@ from oxn.observability.prometheus import Prometheus
 class SemanticValidator:
     """Semantic validation for experiment specifications"""
 
-    def __init__(self, experiment_spec: ExperimentSpec):
+    def __init__(self, experiment_spec: ExperimentSpec, orchestrator: Orchestrator):
         self.experiment_spec = experiment_spec
         """The experiment specification to validate"""
-        self.prometheus = Prometheus()
+        self.prometheus = Prometheus(orchestrator=orchestrator)
         """API to Prometheus required for label values and metric names"""
-        self.jaeger = Jaeger()
+        self.jaeger = Jaeger(orchestrator=orchestrator)
         """API to Jaeger to required for service names"""
-        self.metric_names = None
+        self.metric_names: Set[str] = set()
         """A set of metric names from Prometheus"""
-        self.label_names = None
+        self.label_names: Set[str] = set()
         """A set of label names from Prometheus"""
-        self.label_values = None
+        self.label_values: Dict[str, Set[str]] = {}
         """A set of label values from Prometheus"""
-        self.service_names = None
+        self.service_names: Set[str] = set()
         """A set of service names from Jaeger"""
         self.metric_rvar_type = "metric"
         """Constant to represent the metric rvar type"""
@@ -94,10 +95,7 @@ class SemanticValidator:
 
     def _validate_label_value(self, label: str, label_value: str) -> bool:
         """A label value is valid if it is recognized by Prometheus given a valid label name"""
-        return (
-                self._validate_label_name(label=label)
-                and label_value in self.label_values[label]
-        )
+        return self._validate_label_name(label=label) and label_value in self.label_values[label]
 
     def _validate_labels(self, labels: dict):
         """Validate the labels dict from a metric response variable"""
@@ -109,15 +107,15 @@ class SemanticValidator:
 
     def validate_metric_response_description(self, response: MetricResponseDescription) -> None:
         """Validate a single metric response variable description"""
-        self._validate_metric_name(response.metric_name),
-        self._validate_labels(response.labels),
+        (self._validate_metric_name(response.metric_name),)
+        (self._validate_labels(response.labels),)
 
     def validate_trace_response_description(self, response: TraceResponseDescription):
         """Validate a single trace response description from an experiment specification"""
         if response.service_name not in self.service_names:
             self.messages.append(f"Jaeger does not know service name {response.name}")
 
-    def validate_treatment(self, treatment_description: dict):
+    def validate_treatment(self, treatment_description: TreatmentDescription):
         """
         Validate a single treatment description from an experiment specification
         """
@@ -171,9 +169,7 @@ def validate_syntax(experiment_spec: dict) -> ExperimentSpec:
     try:
         return ExperimentSpec.model_validate(experiment_spec)
     except pydantic.ValidationError as e:
-        raise OxnException(
-            message="Can't validate experiment spec", explanation=str(e)
-        )
+        raise OxnException(message="Can't validate experiment spec", explanation=str(e))
 
 
 def load_experiment_specification(path: str) -> ExperimentSpec:

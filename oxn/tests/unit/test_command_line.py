@@ -1,8 +1,9 @@
 """Test the CLI"""
+
 import unittest
-from oxn.cli.argparser import parser
-from oxn.cli.argparser import parse_oxn_args
 import unittest.mock as mock
+
+from oxn.cli.argparser import parse_oxn_args, parser
 
 
 class CommandLineTests(unittest.TestCase):

@@ -4,16 +4,15 @@ Functionality: Provides methods to query metrics and labels from Prometheus.
 Connection: Used by responses.py and validation.py to gather metrics and validate configurations.
 
 Wrapper around the Prometheus HTTP API"""
+
 import logging
-from math import e
+
 import requests
-from requests.adapters import Retry, HTTPAdapter
-
-from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
-
-from oxn.models.orchestrator import Orchestrator
+from requests.adapters import HTTPAdapter, Retry
 
 from oxn.common.errors import PrometheusException
+from oxn.models.orchestrator import Orchestrator
+from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -25,17 +24,17 @@ class Prometheus:
     def __init__(self, orchestrator: Orchestrator, target: str = "sue"):
         assert orchestrator is not None
         self.orchestrator = orchestrator
-        retries = Retry(
-            total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504], raise_on_status=False
-        )
+        retries = Retry(total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504], raise_on_status=False)
         if isinstance(orchestrator, KubernetesOrchestrator):
             prometheus = orchestrator.get_prometheus_service(target)
             self.session = orchestrator.cluster_proxy.session(max_retries=retries)
-            self.base_url = orchestrator.cluster_proxy.service_url(prometheus.namespace, prometheus.name, 9090, "api/v1/")
+            self.base_url = orchestrator.cluster_proxy.service_url(
+                prometheus.namespace, prometheus.name, 9090, "api/v1/"
+            )
         else:
             self.session = requests.Session()
             self.session.mount("http://", HTTPAdapter(max_retries=retries))
-            self.base_url = f"http://{orchestrator.get_prometheus_address()}:9090/api/v1/"
+            self.base_url = f"http://{orchestrator.get_prometheus_address(target)}:9090/api/v1/"
         logger.debug(f"Using Prometheus at {self.base_url}")
         self.endpoints = {
             "range_query": "query_range",
@@ -64,9 +63,7 @@ class Prometheus:
             qry = metric_name
         return qry
 
-    def target_metadata(
-        self, match_target: str = None, metric: str = None, limit: int = None
-    ):
+    def target_metadata(self, match_target: str | None = None, metric: str | None = None, limit: int | None = None):
         """Return metadata about metric with additional target information"""
 
         params = {
@@ -125,9 +122,7 @@ class Prometheus:
             )
         url = self.base_url + labels
         try:
-            response = self.session.get(
-                url, params=params
-            )
+            response = self.session.get(url, params=params)
             response.raise_for_status()
             return response.json()
         except (requests.ConnectionError, requests.HTTPError) as requests_exception:

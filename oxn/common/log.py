@@ -4,9 +4,10 @@ Functionality: Initializes and configures logging settings based on provided log
 Connection: Used by main.py to set up logging.
 
 Logging configuration for oxn"""
+
 import logging
-import socket
 import logging.config
+import socket
 
 from konsole import SGR, KonsoleFormatter
 

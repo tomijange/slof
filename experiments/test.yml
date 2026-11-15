@@ -116,7 +116,7 @@ experiment:
         step: 1
         target: oxn
   treatments:
-    #- kill_recommendation_service:
+    # - kill_recommendation_service:
     #    action: kubernetes_kill
     #    params: {
     #      namespace: system-under-evaluation,
@@ -124,7 +124,7 @@ experiment:
     #      label: recommendation,
     #      amount_to_kill: 1,
     #    }
-    #- stop_loadgen_deployment:
+    # - stop_loadgen_deployment:
     #    action: scale_deployment
     #    params: {
     #      namespace: system-under-evaluation,
@@ -132,7 +132,7 @@ experiment:
     #      label: loadgenerator,
     #      scale_to: 0,
     #    }
-    #- add_security_context:
+    # - add_security_context:
     #    action: security_context_kubernetes
     #    params: {
     #      namespace: system-under-evaluation,
@@ -143,22 +143,22 @@ experiment:
     - delay_treatment:
         action: delay
         params: {
-            namespace: system-under-evaluation,
-            label_selector: app.kubernetes.io/name,
-            label: recommendation,
-            #service_name: node-exporter,
-            delay_time: 45ms,
-            delay_jitter: 45ms,
-            duration: 1m,
-            interface: eth0,
-          }
+          namespace: system-under-evaluation,
+          label_selector: app.kubernetes.io/name,
+          label: recommendation,
+          # service_name: node-exporter,
+          delay_time: 45ms,
+          delay_jitter: 45ms,
+          duration: 1m,
+          interface: eth0,
+        }
     # - probabilistic_head_sampling_rate:
     #     action: kube_probl
     #     params: {
     #       sampling_percentage: 5.0,
     #       hash_seed: 22,
     #       }
-    #- package_lost_treatment:
+    # - package_lost_treatment:
     #    action: kubernetes_loss
     #    params: {
     #      namespace: system-under-evaluation,
@@ -173,7 +173,7 @@ experiment:
     #     params: {
     #       duration: 60m,
     #     }
-    #- increase_otel_metric_interval:
+    # - increase_otel_metric_interval:
     #    action: kubernetes_otel_metrics_interval
     #    params: {
     #      namespace: system-under-evaluation,
@@ -181,8 +181,8 @@ experiment:
     #      label: recommendation,
     #      interval: 15s,
     #    }
-    #reloading the prometheus config is not as trivial as it seems to be
-    #- prometheus_scrape_interval:
+    # reloading the prometheus config is not as trivial as it seems to be
+    # - prometheus_scrape_interval:
     #    action: kubernetes_prometheus_interval
     #    params: {
     #      interval: 5s,
@@ -191,8 +191,8 @@ experiment:
     #    }
   sue:
     exclude: [loadgenerator]
-    required: [{ namespace: system-under-evaluation, name: prometheus }] # {namespace: monitoring, name: not-running-service}
-    #required: [{namespace: monitoring, name: grafana}, {namespace: monitoring, name: node-exporter}]
+    required: [{ namespace: system-under-evaluation, name: prometheus }]  # {namespace: monitoring, name: not-running-service}
+    # required: [{namespace: monitoring, name: grafana}, {namespace: monitoring, name: node-exporter}]
   loadgen:
     run_time: 6m
     max_users: 500

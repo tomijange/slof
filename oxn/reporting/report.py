@@ -4,23 +4,23 @@ Functionality: Collects and formats interaction data between treatments and resp
 Connection: Called by main.py and Engine to compile and save experiment results.
 
 Handle the generation of experiment reports"""
+
 import datetime
 import logging
 import uuid
-from typing import Tuple, Union
+from typing import Any, Tuple, Union
 
 import locust.stats
-import yaml
-
 import pandas as pd
+import yaml
 from scipy.stats import ttest_ind
 
+from oxn.common.errors import OxnException
+from oxn.common.utils import humanize_utc_timestamp
 from oxn.core.runner import ExperimentRunner
 from oxn.models.treatment import Treatment
-from oxn.observability.responses import TraceResponseVariable, MetricResponseVariable
+from oxn.observability.responses import MetricResponseVariable, TraceResponseVariable
 from oxn.reporting.store import construct_key
-from oxn.common.utils import humanize_utc_timestamp
-from oxn.common.errors import OxnException
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class Reporter:
         self,
         report_path: str,
     ):
-        self.report_data = {"report": {"runs": {}}}
+        self.report_data: dict[str, dict[str, Any]] = {"report": {"runs": {}}}
         self.report_path = report_path
         self.report_file_name = f"report_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.yaml"
         self.interactions = []
@@ -68,15 +68,11 @@ class Reporter:
         response: Union[TraceResponseVariable, MetricResponseVariable],
     ):
         """Gather interaction data between a treatment and a response for the experiment report"""
-        value_column = (
-            "duration"
-            if isinstance(response, TraceResponseVariable)
-            else response.metric_name
-        )
+        assert response.data is not None
+        assert treatment.start is not None and treatment.end is not None
+        value_column = "duration" if isinstance(response, TraceResponseVariable) else response.metric_name
         display_response_name = (
-            response.name
-            if isinstance(response, MetricResponseVariable)
-            else f"{response.name}.duration"
+            response.name if isinstance(response, MetricResponseVariable) else f"{response.name}.duration"
         )
         store_key = construct_key(
             experiment_key=experiment.config_filename,
@@ -108,13 +104,13 @@ class Reporter:
     def _add_interaction_data(
         self,
         treatment_name: str,
-        treatment_start: int,
+        treatment_start: float,
         treatment_type: str,
-        treatment_end: int,
+        treatment_end: float,
         response_name: str,
         response_type: str,
-        response_start: int,
-        response_end: int,
+        response_start: float,
+        response_end: float,
         p_value: str,
         test_statistic: str,
         test_performed: str,
@@ -152,17 +148,13 @@ class Reporter:
         self.report_data["report"]["runs"][run_key] = {}
         self.report_data["report"]["runs"][run_key]["interactions"] = {}
         for idx, interaction in enumerate(self.interactions):
-            self.report_data["report"]["runs"][run_key]["interactions"][
-                f"interaction_{idx}"
-            ] = interaction
+            self.report_data["report"]["runs"][run_key]["interactions"][f"interaction_{idx}"] = interaction
         return self.report_data
 
     def add_experiment_data(self, runner: ExperimentRunner) -> dict:
         """Add top level experiment data to the report"""
         try:
-            self.report_data["report"][
-                "experiment_start"
-            ] = runner.humanize_start_timestamp
+            self.report_data["report"]["experiment_start"] = runner.humanize_start_timestamp
             self.report_data["report"]["experiment_end"] = runner.humanize_end_timestamp
             self.report_data["report"]["experiment_key"] = runner.short_hash
         except KeyError as key_error:
@@ -179,27 +171,23 @@ class Reporter:
     ) -> dict:
         """Add load generation details to the report"""
         self.report_data["report"]["runs"][runner.short_id]["loadgen"] = {}
-        self.report_data["report"]["runs"][runner.short_id]["loadgen"][
-            "loadgen_start_time"
-        ] = humanize_utc_timestamp(request_stats.start_time)
-        self.report_data["report"]["runs"][runner.short_id]["loadgen"][
-            "loadgen_end_time"
-        ] = humanize_utc_timestamp(request_stats.last_request_timestamp)
-        self.report_data["report"]["runs"][runner.short_id]["loadgen"][
-            "loadgen_total_requests"
-        ] = request_stats.num_requests
-        self.report_data["report"]["runs"][runner.short_id]["loadgen"][
-            "loadgen_total_failures"
-        ] = request_stats.num_failures
-        self.report_data["report"]["runs"][runner.short_id]["loadgen"][
-            "task_details"
-        ] = {}
+        self.report_data["report"]["runs"][runner.short_id]["loadgen"]["loadgen_start_time"] = humanize_utc_timestamp(
+            request_stats.start_time
+        )
+        self.report_data["report"]["runs"][runner.short_id]["loadgen"]["loadgen_end_time"] = humanize_utc_timestamp(
+            request_stats.last_request_timestamp
+        )
+        self.report_data["report"]["runs"][runner.short_id]["loadgen"]["loadgen_total_requests"] = (
+            request_stats.num_requests
+        )
+        self.report_data["report"]["runs"][runner.short_id]["loadgen"]["loadgen_total_failures"] = (
+            request_stats.num_failures
+        )
+        self.report_data["report"]["runs"][runner.short_id]["loadgen"]["task_details"] = {}
         for entry in request_stats.entries.values():
             # get a random task identifier
             task_id = uuid.uuid4().hex[:16]
-            self.report_data["report"]["runs"][runner.short_id]["loadgen"][
-                "task_details"
-            ][task_id] = {
+            self.report_data["report"]["runs"][runner.short_id]["loadgen"]["task_details"][task_id] = {
                 "url": entry.name,
                 "verb": entry.method,
                 "requests": entry.num_requests,
@@ -212,38 +200,30 @@ class Reporter:
                 "median_response_time": entry.median_response_time,
             }
         return self.report_data
-    
+
     def add_loadgen_data_kubernetes_locust(self, generator, runner):
         stats = generator.stats
         """Add load generation details to the report"""
         self.report_data["report"]["runs"][runner.short_id]["loadgen"] = {}
-        self.report_data["report"]["runs"][runner.short_id]["loadgen"][
-            "loadgen_start_time"
-        ] = humanize_utc_timestamp(generator.loadgen_start_time)
-        self.report_data["report"]["runs"][runner.short_id]["loadgen"][
-            "loadgen_end_time"
-        ] = humanize_utc_timestamp(generator.loadgen_stop_time)
+        self.report_data["report"]["runs"][runner.short_id]["loadgen"]["loadgen_start_time"] = humanize_utc_timestamp(
+            generator.loadgen_start_time
+        )
+        self.report_data["report"]["runs"][runner.short_id]["loadgen"]["loadgen_end_time"] = humanize_utc_timestamp(
+            generator.loadgen_stop_time
+        )
 
         total_amount_requests = 0
         total_amount_failures = 0
         for endpoint_stats in stats["stats"]:
             total_amount_requests += endpoint_stats["num_requests"]
             total_amount_failures += endpoint_stats["num_failures"]
-        self.report_data["report"]["runs"][runner.short_id]["loadgen"][
-            "loadgen_total_requests"
-        ] = total_amount_requests
-        self.report_data["report"]["runs"][runner.short_id]["loadgen"][
-            "loadgen_total_failures"
-        ] = total_amount_failures
-        self.report_data["report"]["runs"][runner.short_id]["loadgen"][
-            "task_details"
-        ] = {}
+        self.report_data["report"]["runs"][runner.short_id]["loadgen"]["loadgen_total_requests"] = total_amount_requests
+        self.report_data["report"]["runs"][runner.short_id]["loadgen"]["loadgen_total_failures"] = total_amount_failures
+        self.report_data["report"]["runs"][runner.short_id]["loadgen"]["task_details"] = {}
         for entry in stats["stats"]:
             # get a random task identifier
             task_id = uuid.uuid4().hex[:16]
-            self.report_data["report"]["runs"][runner.short_id]["loadgen"][
-                "task_details"
-            ][task_id] = {
+            self.report_data["report"]["runs"][runner.short_id]["loadgen"]["task_details"][task_id] = {
                 "url": entry["name"],
                 "verb": entry["method"],
                 "requests": entry["num_requests"],
@@ -258,7 +238,7 @@ class Reporter:
 
     def dump_report_data(self):
         # report name has current time in it
-        with open(self.report_path + self.report_file_name , "w+") as fp:
+        with open(self.report_path + self.report_file_name, "w+") as fp:
             contents = yaml.dump(self.report_data, sort_keys=False)
             fp.write(contents)
         logger.info(f"Wrote report to {self.report_path + self.report_file_name}")

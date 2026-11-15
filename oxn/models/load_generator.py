@@ -1,9 +1,8 @@
-from abc import ABC, abstractmethod
 import logging
-from typing import List
-from locust.env import Environment
+from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
+
 
 class BaseLoadGenerator(ABC):
     """Abstract base class for load generators"""

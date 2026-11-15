@@ -4,16 +4,16 @@ Functionality: Provides methods to query traces and services from Jaeger.
 Connection: Used by responses.py and validation.py to gather trace data and validate configurations.
 
 Wrapper around the internal Jaeger tracing API"""
-from typing import Optional, Union
+
+import logging
+from typing import Optional
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
-import logging
-
-from oxn.models.orchestrator import Orchestrator
-from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 from oxn.common.errors import JaegerException
+from oxn.models.orchestrator import Orchestrator
+from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 LOGGER = logging.getLogger(__name__)
 
@@ -30,14 +30,14 @@ class Jaeger:
     def __init__(self, orchestrator: Orchestrator, jaeger_service_name: str = "jaeger"):
         assert orchestrator is not None
         self.orchestrator = orchestrator
-        retries = Retry(
-            total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504], raise_on_status=False
-        )
+        retries = Retry(total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504], raise_on_status=False)
         """Retry policy. Force retries on server errors"""
         if isinstance(orchestrator, KubernetesOrchestrator):
             jaeger = orchestrator.get_jaeger_service()
             self.session = orchestrator.cluster_proxy.session(max_retries=retries)
-            self.base_url = orchestrator.cluster_proxy.service_url(jaeger.namespace, jaeger.name, 16686, "jaeger/ui/api/")
+            self.base_url = orchestrator.cluster_proxy.service_url(
+                jaeger.namespace, jaeger.name, 16686, "jaeger/ui/api/"
+            )
             """Jaeger base url"""
         else:
             self.session = requests.Session()
@@ -57,7 +57,7 @@ class Jaeger:
         }
         """Jaeger API endpoints"""
 
-    def get_services(self) -> Union[list, None]:
+    def get_services(self) -> list:
         """Returns a list of all services"""
         endpoint = self.endpoints.get("services")
         if endpoint is None:
@@ -122,7 +122,7 @@ class Jaeger:
                 explanation=error,
             )
 
-    def get_service_operations(self, service="adservice") -> [dict, None]:
+    def get_service_operations(self, service="adservice") -> dict | None:
         """Get all service operations for a given service from Jaeger"""
         operations = self.endpoints.get("operations")
         if operations is None:
@@ -142,7 +142,7 @@ class Jaeger:
                 explanation=error,
             )
 
-    def get_dependencies(self, end_timestamp=None, lookback=604800000) -> [dict, None]:
+    def get_dependencies(self, end_timestamp=None, lookback=604800000) -> dict | None:
         """Get a dependency graph from Jaeger"""
         dependencies = self.endpoints.get("dependencies")
         if dependencies is None:
@@ -162,7 +162,7 @@ class Jaeger:
                 explanation=error,
             )
 
-    def get_trace_by_id(self, trace_id) -> [dict, None]:
+    def get_trace_by_id(self, trace_id) -> dict | None:
         """Get a single Jaeger trace by a trace id"""
         trace = self.endpoints.get("trace")
         if trace is None:

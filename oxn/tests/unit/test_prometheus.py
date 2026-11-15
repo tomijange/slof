@@ -1,21 +1,22 @@
 import time
 import unittest
+import warnings
+from unittest.mock import MagicMock, patch
 
 import requests
 from requests import Session
-from unittest.mock import patch
 
 from oxn.common.errors import PrometheusException
 from oxn.observability.prometheus import Prometheus
 
-import warnings
 warnings.simplefilter("ignore", ResourceWarning)
 
 
 class PrometheusTests(unittest.TestCase):
-
     def setUp(self) -> None:
-        self.api = Prometheus()
+        orchestrator = MagicMock()
+        orchestrator.get_prometheus_address.return_value = "localhost"
+        self.api = Prometheus(orchestrator=orchestrator)
 
     def tearDown(self) -> None:
         self.api.session.close()
@@ -69,7 +70,5 @@ class PrometheusTests(unittest.TestCase):
         a_minute_ago = now - 1 * 60
         metric_name = "otelcol_exporter_sent_spans"
         query = self.api.build_query(metric_name=metric_name)
-        result = self.api.range_query(
-            query=query, start=a_minute_ago, end=now, step="5s"
-        )
+        result = self.api.range_query(query=query, start=a_minute_ago, end=now, step="5s")
         self.assertTrue(result == {"data": "mock_data"})

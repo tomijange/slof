@@ -2,7 +2,7 @@ import json
 import unittest
 from unittest import mock
 
-from oxn.cli.installer import Installer, TOOLS
+from oxn.cli.installer import TOOLS, Installer
 from oxn.common.errors import DeploymentException
 
 

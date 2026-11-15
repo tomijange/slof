@@ -13,23 +13,18 @@ class DeploymentScaleTreatment(CompileTimeTreatment):
     """
     Will scale a deployment to 0 replicas and back to the original number of replicas.
     """
-    
-    action = "scale_deployment"
 
+    action = "scale_deployment"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.replicas_before = 0
         self.deployment = None
 
-
-
     def preconditions(self) -> bool:
         """Check if the deployment exists"""
         super().preconditions()
         return True
-        
-        
 
     def inject(self) -> None:
         super().inject()
@@ -37,7 +32,7 @@ class DeploymentScaleTreatment(CompileTimeTreatment):
         label_selector = self.config.get("label_selector")
         label = self.config.get("label")
         scale_to = self.config.get("scale_to")
-        assert scale_to is not None and scale_to >= 0 
+        assert scale_to is not None and scale_to >= 0
         try:
             assert isinstance(self.orchestrator, KubernetesOrchestrator)
             self.deployment = KubernetesOrchestrator.get_deployment(self.orchestrator, namespace, label_selector, label)
@@ -46,13 +41,14 @@ class DeploymentScaleTreatment(CompileTimeTreatment):
                 return
         except OrchestratorException as e:
             self.messages.append(e.message)
-            return 
-        
+            return
+
         assert self.deployment.spec
         assert self.deployment.metadata
         assert self.deployment.metadata.name
 
-        self.replicas_before = self.deployment.spec.replicas
+        # Kubernetes runs one replica if the spec sets none
+        self.replicas_before = self.deployment.spec.replicas if self.deployment.spec.replicas is not None else 1
         response = KubernetesOrchestrator.scale_deployment(self.orchestrator, self.deployment, scale_to)
         if response is None:
             self.messages.append(f"Failed to scale deployment {self.deployment.metadata.name} to {scale_to}")
@@ -78,12 +74,14 @@ class DeploymentScaleTreatment(CompileTimeTreatment):
                 return
         except OrchestratorException as e:
             self.messages.append(e.message)
-            return 
+            return
         assert self.deployment.metadata
         assert self.deployment.metadata.name
         response = KubernetesOrchestrator.scale_deployment(self.orchestrator, self.deployment, self.replicas_before)
         if response is None:
-            self.messages.append(f"Failed to scale deployment {self.deployment.metadata.name} to {self.replicas_before}")
+            self.messages.append(
+                f"Failed to scale deployment {self.deployment.metadata.name} to {self.replicas_before}"
+            )
             return
         logger.info(f"Deployment {self.deployment.metadata.name} scaled to {self.replicas_before}")
 
@@ -96,8 +94,8 @@ class DeploymentScaleTreatment(CompileTimeTreatment):
         }
 
     def _validate_params(self) -> bool:
-        """ 
-        Check if all required parameters are supplied and have the correct type.        
+        """
+        Check if all required parameters are supplied and have the correct type.
         """
 
         for key, value in self.params().items():
@@ -107,10 +105,9 @@ class DeploymentScaleTreatment(CompileTimeTreatment):
                 self.messages.append(f"Parameter {key} has to be of type {value} for {self.treatment_type}")
 
         return not self.messages
-        
 
     def _transform_params(self) -> None:
         pass
 
     def _validate_orchestrator(self) -> bool:
-        return super()._validate_orchestrator(["kubernetes"])
+        return self._orchestrator_is_one_of(["kubernetes"])

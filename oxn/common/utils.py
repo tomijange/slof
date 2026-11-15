@@ -1,23 +1,16 @@
-""" 
+"""
 Purpose: Provides utility functions.
 Functionality: Contains helper functions for time conversion, and timestamps.
 Connection: Utility functions are used across different modules for common tasks.
 
- """
+"""
 
-import os
 import re
-from typing import Callable
-from datetime import datetime
-from datetime import timezone
-
-import functools
-
-
+from datetime import datetime, timezone
 
 SECONDS_MAP = {
-    "us": 1 / 10 ** 6,
-    "ms": 1 / 10 ** 3,
+    "us": 1 / 10**6,
+    "ms": 1 / 10**3,
     "s": 1,
     "m": 60,
     "h": 3600,
@@ -49,19 +42,20 @@ def time_string_to_seconds(time_string) -> float:
 
 def to_milliseconds(seconds):
     """Convert seconds to milliseconds"""
-    return seconds * 10 ** 3
+    return seconds * 10**3
 
 
 def to_microseconds(seconds):
     """Convert seconds to microseconds"""
-    return seconds * 10 ** 6
+    return seconds * 10**6
 
 
 def utc_timestamp() -> float:
-    """Get the current time in """
+    """Get the current time in"""
     return datetime.now(timezone.utc).timestamp()
 
 
 def humanize_utc_timestamp(timestamp):
     """Return a human-readable version of a timestamp"""
-    return datetime.utcfromtimestamp(timestamp)
+    # naive like utcfromtimestamp, which Python 3.12 deprecates
+    return datetime.fromtimestamp(timestamp, timezone.utc).replace(tzinfo=None)

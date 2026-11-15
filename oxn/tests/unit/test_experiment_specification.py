@@ -6,7 +6,6 @@ import yaml
 
 from oxn.common.errors import OxnException
 from oxn.core.runner import ExperimentRunner
-from oxn.treatments.runtime import EmptyTreatment
 from oxn.core.validation import SemanticValidator, validate_syntax
 from oxn.loadgen.locust_kubernetes import LocustKubernetesLoadgenerator
 from oxn.models.experiment_spec import (
@@ -19,6 +18,7 @@ from oxn.models.experiment_spec import (
 )
 from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 from oxn.tests.unit.spec_mocks import experiment_spec_mock, kubernetes_experiment
+from oxn.treatments.runtime import EmptyTreatment
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -106,14 +106,18 @@ class SpecificationTest(unittest.TestCase):
         self.assertEqual(experiment.sue.required, [])
         self.assertEqual(experiment.loadgen.max_users, 100)
         self.assertEqual(experiment.loadgen.spawn_rate, 10)
-        self.assertEqual(experiment.responses[2].limit, 100)
+        trace_response = experiment.responses[2]
+        assert isinstance(trace_response, TraceResponseDescription)
+        self.assertEqual(trace_response.limit, 100)
 
 
 class DeploymentSectionTest(unittest.TestCase):
     def _steps(self, *steps):
         spec = yaml.safe_load(experiment_spec_mock)
         spec["experiment"]["deployment"] = {"steps": list(steps)}
-        return validate_syntax(spec).experiment.deployment.steps
+        deployment = validate_syntax(spec).experiment.deployment
+        assert deployment is not None
+        return deployment.steps
 
     def test_it_builds_typed_steps_in_order(self):
         helm = {"release": "shop", "chart": "demo", "namespace": "sue", "set": {"a.b": True}}
@@ -150,25 +154,35 @@ class SpecConsumersTest(unittest.TestCase):
         spec = kubernetes_spec()
         spec.experiment.loadgen.locust_files[0].path = os.path.join(REPO_ROOT, "locust", "locust_basic_interaction.py")
         generator = LocustKubernetesLoadgenerator(orchestrator=orchestrator, config=spec)
-        orchestrator.get_address_for_service.assert_called_with(name="frontend-proxy", namespace="system-under-evaluation")
+        orchestrator.get_address_for_service.assert_called_with(
+            name="frontend-proxy", namespace="system-under-evaluation"
+        )
         self.assertEqual((generator.base_address, generator.port), ("10.0.0.1", 8080))
         self.assertEqual(generator.run_time, 600)
         self.assertEqual((generator.max_users, generator.spawn_rate), (100, 10))
         self.assertIn("UserBehavior", generator._generate_locustfile_content())
 
     def test_the_kubernetes_orchestrator_finds_services(self):
-        with mock.patch("oxn.orchestration.kubernetes_orchestrator.config"), mock.patch(
-            "oxn.orchestration.kubernetes_orchestrator.client"
-        ), mock.patch("oxn.orchestration.kubernetes_orchestrator.SteeringController"):
+        with (
+            mock.patch("oxn.orchestration.kubernetes_orchestrator.config"),
+            mock.patch("oxn.orchestration.kubernetes_orchestrator.client"),
+            mock.patch("oxn.orchestration.kubernetes_orchestrator.SteeringController"),
+        ):
             orchestrator = KubernetesOrchestrator(experiment_config=kubernetes_spec())
         with mock.patch.object(orchestrator, "get_address_for_service") as address:
             orchestrator.get_jaeger_address()
             address.assert_called_with(name="jaeger", namespace="system-under-evaluation")
             orchestrator.get_prometheus_address("oxn")
-            address.assert_called_with(name="kube-prometheus-kube-prome-prometheus", namespace="oxn-external-monitoring")
+            address.assert_called_with(
+                name="kube-prometheus-kube-prome-prometheus", namespace="oxn-external-monitoring"
+            )
         self.assertTrue(orchestrator.ready(expected_services=None))
-        orchestrator.kube_client.read_namespaced_service.assert_any_call("grafana", "monitoring")
-        self.assertEqual(orchestrator.required_services[1], ServiceReference(namespace="monitoring", name="node-exporter"))
+        read_service = orchestrator.kube_client.read_namespaced_service
+        assert isinstance(read_service, mock.Mock)
+        read_service.assert_any_call("grafana", "monitoring")
+        self.assertEqual(
+            orchestrator.required_services[1], ServiceReference(namespace="monitoring", name="node-exporter")
+        )
 
     def test_the_semantic_validator_reports_unknown_names(self):
         validator = SemanticValidator.__new__(SemanticValidator)

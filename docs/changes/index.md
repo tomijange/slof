@@ -22,6 +22,7 @@ SLOF builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legler. Th
 15-material-theme
 16-refactorings
 17-lint-and-format
+18-formatting-and-type-fixes
 ```
 
 ## In order
@@ -45,6 +46,7 @@ SLOF builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legler. Th
 | 15 | [Material theme for the docs](15-material-theme.md) | The docs site uses `sphinx-immaterial`, with tabs, search, light and dark mode and the theme's Mermaid renderer |
 | 16 | [Refactorings](16-refactorings.md) | One `phase` field and `Engine.teardown()` instead of `sue_running` and `loadgen_running`. Failed or interrupted deployments are torn down. One module per treatment in `oxn/treatments/runtime` and `compile_time`. `experiment_key` differs per spec. One `log_exception` helper in `oxn/common/log.py` |
 | 17 | [Linting, formatting and type checking](17-lint-and-format.md) | Ruff for Python, yamllint for YAML, ty for type hints, `make lint`, `make format` and a Lint workflow. No `.vscode/` folder |
+| 18 | [Formatting and type fixes](18-formatting-and-type-fixes.md) | `make lint` passes: code formatted with Ruff and free of Ruff, ty and yamllint findings. Base classes match their subclasses, `kubernetes_corrupt` works, two unused load generators removed. `make hooks` installs a pre-commit hook for `make lint` |
 
 ## GOXN and now
 
@@ -80,8 +82,8 @@ What the changes so far leave open:
 
 | Limitation | From |
 |---|---|
-| Several unit tests from GOXN fail or do not import. [Removal of Docker Compose support](12-remove-docker-compose.md) removed some of them. | [1](01-package-layout.md#known-limitations) |
-| The repository does not pass `make lint` yet, and ty finds 160 type problems. Ruff selects only a small set of rules, and `evaluation/` is not type checked. | [17](17-lint-and-format.md#known-limitations) |
+| Three unit tests from GOXN fail: two `test_command_line` checks of the timeout and one `test_kubernetes_orchestration` case. | [1](01-package-layout.md#known-limitations), [18](18-formatting-and-type-fixes.md#known-limitations) |
+| Ruff selects only a small set of rules, and `evaluation/` is not type checked. | [17](17-lint-and-format.md#known-limitations) |
 | After an error or ctrl-c, in-cluster Locust pods and treatments are only removed with the SUE, so they stay with `--keep-sue`. | [16](16-refactorings.md#known-limitations) |
 
 ## Writing a change page

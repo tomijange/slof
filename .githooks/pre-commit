@@ -1,0 +1,11 @@
+#!/bin/sh
+# Runs make lint before every commit, see docs/getting-started.md#commit-hook
+# Install with make hooks, skip it once with git commit --no-verify
+
+# Use the repository's virtual environment, also when it is not activated, e.g. for commits from an editor
+if [ -d .venv/bin ]; then
+  PATH="$PWD/.venv/bin:$PATH"
+  export PATH
+fi
+
+exec make lint

@@ -1,23 +1,20 @@
-
 import importlib
-from importlib.machinery import ModuleSpec
 import importlib.util
 import logging
+from importlib.machinery import ModuleSpec
 
-from locust import HttpUser, TaskSet, task
-from locust.env import Environment
-from locust.stats import stats_printer, stats_history
-from locust.log import setup_logging
-
-from oxn.models.load_generator import BaseLoadGenerator
-from oxn.models.experiment_spec import ExperimentSpec
-from oxn.common.errors import LocustException, OxnException
-from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
-from oxn.models.orchestrator import Orchestrator
-import oxn.common.utils as utils
-
-from gevent import Greenlet
 from gevent.pool import Group
+from locust.env import Environment
+from locust.log import setup_logging
+from locust.stats import stats_history, stats_printer
+
+import oxn.common.utils as utils
+from locust import HttpUser
+from oxn.common.errors import LocustException
+from oxn.models.experiment_spec import ExperimentSpec
+from oxn.models.load_generator import BaseLoadGenerator
+from oxn.models.orchestrator import Orchestrator
+from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +24,7 @@ class LocustFileLoadgenerator(BaseLoadGenerator):
     Locust loader for oxn
     This loads the locust file and runs the locust file
     """
-    
+
     def __init__(self, orchestrator: Orchestrator, config: ExperimentSpec):
         super().__init__(orchestrator, config)
         """The experiment spec"""
@@ -53,36 +50,43 @@ class LocustFileLoadgenerator(BaseLoadGenerator):
 
         self.base_address = "localhost"
         self.port = 8080
-        
+
         if self.target:
-            assert isinstance(self.orchestrator, KubernetesOrchestrator), "Orchestrator must be KubernetesOrchestrator if target is specified"
-            self.base_address = self.orchestrator.get_address_for_service(name=self.target.name, namespace=self.target.namespace)
+            assert isinstance(self.orchestrator, KubernetesOrchestrator), (
+                "Orchestrator must be KubernetesOrchestrator if target is specified"
+            )
+            self.base_address = self.orchestrator.get_address_for_service(
+                name=self.target.name, namespace=self.target.namespace
+            )
             self.port = self.target.port
-            
+
         logger.info(f"Base address for load generation set to {self.base_address}:{self.port}")
-        
+
         self.env = Environment(user_classes=[], host=f"http://{self.base_address}:{self.port}")
         self.env.create_local_runner()
-        
+
         for locust_file in self.locust_files:
             path = locust_file.path
             locust_module = self._load_locust_file(path)
             for user_class in dir(locust_module):
                 user_class_instance = getattr(locust_module, user_class)
-                if isinstance(user_class_instance, type) and issubclass(user_class_instance, HttpUser) and user_class_instance is not HttpUser:
+                if (
+                    isinstance(user_class_instance, type)
+                    and issubclass(user_class_instance, HttpUser)
+                    and user_class_instance is not HttpUser
+                ):
                     self.env.user_classes.append(user_class_instance)
                     logger.info(f"Added user class {user_class_instance.__name__} from {path}")
-                    
-        
+
     def _load_locust_file(self, path):
         """Load a locust file from the specified path"""
         spec = importlib.util.spec_from_file_location("locustfile", path)
         if not spec:
             raise LocustException(f"Could not load locust file from {path}")
-        
+
         assert isinstance(spec, ModuleSpec)
         assert spec.loader is not None
-        
+
         locustfile = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(locustfile)
         return locustfile
@@ -90,14 +94,13 @@ class LocustFileLoadgenerator(BaseLoadGenerator):
     def start(self):
         """Start the load generation"""
         setup_logging("INFO", None)
-        
+
         assert self.env is not None, "Locust environment must be initialized before starting"
         assert self.env.runner is not None, "Locust runner must be initialized before starting"
-        
+
         self.env.runner.start(self.max_users, self.spawn_rate)
         self.greenlets.spawn(stats_printer(self.env.stats))
         self.greenlets.spawn(stats_history, self.env.runner)
-
 
     def stop(self):
         """Join the greenlet created by locust env (= wait until it has finished)"""
@@ -111,5 +114,3 @@ class LocustFileLoadgenerator(BaseLoadGenerator):
         self.greenlets.kill()
         if self.env and self.env.runner:
             self.env.runner.quit()  # Ensure the runner is stopped if kill is called
-
-

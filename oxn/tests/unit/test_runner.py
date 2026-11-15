@@ -19,9 +19,11 @@ class ExperimentHashTest(unittest.TestCase):
         self.assertNotEqual(self._hash("experiments/test.yml"), self._hash("experiments/other.yml"))
 
     def test_without_a_spec_path_there_is_no_short_hash(self):
-        with mock.patch("oxn.core.runner.Observer"), mock.patch.object(
-            ExperimentRunner, "_build_treatments"
-        ), mock.patch.object(ExperimentRunner, "_extend_treatments"):
+        with (
+            mock.patch("oxn.core.runner.Observer"),
+            mock.patch.object(ExperimentRunner, "_build_treatments"),
+            mock.patch.object(ExperimentRunner, "_extend_treatments"),
+        ):
             runner = ExperimentRunner(orchestrator=mock.MagicMock(), config=mock.MagicMock())
         self.assertIsNone(runner.short_hash)
 
@@ -43,7 +45,9 @@ class TreatmentKindTest(unittest.TestCase):
                 runtime = action in self.RUNTIME
                 base = RuntimeTreatment if runtime else CompileTimeTreatment
                 self.assertTrue(issubclass(treatment_class, base))
-                self.assertIs(treatment_class.is_runtime(None), runtime)
+                # is_runtime() only depends on the class, so the instance needs no constructor call
+                treatment = treatment_class.__new__(treatment_class)
+                self.assertIs(treatment.is_runtime(), runtime)
 
     def test_each_package_only_holds_its_kind(self):
         for package, base in ((runtime_package, RuntimeTreatment), (compile_time_package, CompileTimeTreatment)):

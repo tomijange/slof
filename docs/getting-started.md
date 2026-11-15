@@ -81,7 +81,17 @@ pip install -r requirements-dev.txt
 
 `make lint` checks every file without changing it, the same check the Lint workflow runs on every push and pull request. `make format` fixes what Ruff can fix and formats the Python files. yamllint does not change files, so fix its findings by hand.
 
-The settings are in `pyproject.toml` for Ruff and `.yamllint.yml` for yamllint. yamllint skips the Locust manifests in `locust/kubernetes/` that are Jinja templates.
+The settings are in `pyproject.toml` for Ruff and `.yamllint.yml` for yamllint. yamllint skips the Locust manifests in `locust/kubernetes/` that are Jinja templates or copies from another project, and allows one space inside braces, as in `{ name: prometheus }`.
+
+### Commit hook
+
+To run `make lint` before every commit, install the hook in `.githooks/` once:
+
+```bash
+make hooks
+```
+
+The hook uses `.venv/` even when it is not activated, so commits from an editor are checked too. A failing check stops the commit. Fix the findings, for example with `make format`, and commit again, or skip the check once with `git commit --no-verify`. The hook checks the files in the working tree, not only the staged changes.
 
 ## Type check
 

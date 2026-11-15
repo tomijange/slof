@@ -1,4 +1,4 @@
-.PHONY: coverage lint format build docs docs-serve clean setup-cluster deploy-sue teardown-sue
+.PHONY: coverage lint format hooks build docs docs-serve clean setup-cluster deploy-sue teardown-sue
 
 SPEC ?= experiments/test.yml
 
@@ -17,6 +17,10 @@ lint:
 format:
 	ruff check --fix .
 	ruff format .
+
+# Runs make lint before every commit, with the hook in .githooks/
+hooks:
+	git config core.hooksPath .githooks
 
 build:
 	python -m build

@@ -1,6 +1,6 @@
 import unittest
 import warnings
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from requests import Session
 
@@ -11,9 +11,10 @@ warnings.simplefilter("ignore", ResourceWarning)
 
 
 class JaegerTests(unittest.TestCase):
-
     def setUp(self) -> None:
-        self.api = Jaeger()
+        orchestrator = MagicMock()
+        orchestrator.get_jaeger_address.return_value = "localhost"
+        self.api = Jaeger(orchestrator=orchestrator)
 
     def tearDown(self) -> None:
         self.api.session.close()
@@ -63,6 +64,4 @@ class JaegerTests(unittest.TestCase):
         with self.assertRaises(JaegerException) as context:
             self.api.get_trace_by_id(trace_id="some_trace_id")
             endpoint = self.api.endpoints.get("trace")
-            self.assertTrue(
-                context.exception == f"Error while talking to Jaeger at {endpoint}"
-            )
+            self.assertTrue(context.exception == f"Error while talking to Jaeger at {endpoint}")

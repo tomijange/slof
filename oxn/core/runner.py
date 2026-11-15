@@ -4,21 +4,28 @@ Functionality: Applies treatments, runs the experiment, and collects results.
 Connection: Core component that uses treatments and observer to perform an experiment.
 
 Experiment runner"""
+
+import datetime
+import hashlib
 import logging
 import random
 import time
 import uuid
-import hashlib
-import datetime
 from typing import List
 
+from oxn.common import utils
 from oxn.common.errors import OxnException
+from oxn.common.utils import utc_timestamp
+from oxn.models.experiment_spec import ExperimentSpec
+from oxn.models.orchestrator import Orchestrator
+from oxn.models.treatment import Treatment
+from oxn.observability.observer import Observer
 from oxn.treatments.compile_time import (
     DeploymentScaleTreatment,
     KubernetesApplySecurityContextTreatment,
     KubernetesMetricsExportIntervalTreatment,
-    KubernetesPrometheusIntervalTreatment,
     KubernetesProbabilisticHeadSamplingTreatment,
+    KubernetesPrometheusIntervalTreatment,
 )
 from oxn.treatments.runtime import (
     EmptyKubernetesTreatment,
@@ -28,12 +35,6 @@ from oxn.treatments.runtime import (
     KubernetesNetworkDelayTreatment,
     KubernetesNetworkPacketLossTreatment,
 )
-from oxn.common import utils
-from oxn.observability.observer import Observer
-from oxn.common.utils import utc_timestamp
-from oxn.models.treatment import Treatment
-from oxn.models.orchestrator import Orchestrator
-from oxn.models.experiment_spec import ExperimentSpec
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ class ExperimentRunner:
     The runner additionally waits for the specified time intervals depending on experiment configuration.
 
     """
+
     # TODO: make names less ambiguous
     treatment_keys = {
         "kubernetes_loss": KubernetesNetworkPacketLossTreatment,
@@ -62,16 +64,15 @@ class ExperimentRunner:
         "security_context_kubernetes": KubernetesApplySecurityContextTreatment,
         "kubernetes_kill": KubernetesKillTreatment,
         "kubernetes_corrupt": KubernetesCorruptPacketTreatment,
-        
     }
 
     def __init__(
-            self,
-            orchestrator:Orchestrator,
-            config: ExperimentSpec,
-            config_filename=None,
-            additional_treatments=None,
-            random_treatment_order=False,
+        self,
+        orchestrator: Orchestrator,
+        config: ExperimentSpec,
+        config_filename=None,
+        additional_treatments=None,
+        random_treatment_order=False,
     ):
         self.orchestrator = orchestrator
         self.config = config
@@ -88,9 +89,7 @@ class ExperimentRunner:
         """Experiment end as UTC unix timestamp in seconds"""
         self.random_treatment_order = random_treatment_order
         """If the treatments should be executed in random order"""
-        self.additional_treatments = (
-            additional_treatments if additional_treatments else []
-        )
+        self.additional_treatments = additional_treatments if additional_treatments else []
         """Additional user-supplied treatments"""
         self.observer = Observer(orchestrator=self.orchestrator, config=self.config)
         """Observer for response variables"""
@@ -164,16 +163,10 @@ class ExperimentRunner:
             self.treatment_keys |= {treatment.action: treatment}
 
     def _get_runtime_treatments(self) -> List[Treatment]:
-        return [
-            treatment for treatment in self.treatments.values()
-            if treatment.is_runtime()
-        ]
+        return [treatment for treatment in self.treatments.values() if treatment.is_runtime()]
 
     def _get_compile_time_treatments(self) -> List[Treatment]:
-        return [
-            treatment for treatment in self.treatments.values()
-            if not treatment.is_runtime()
-        ]
+        return [treatment for treatment in self.treatments.values() if not treatment.is_runtime()]
 
     def execute_compile_time_treatments(self) -> None:
         """Execute runtime treatments"""
@@ -198,7 +191,7 @@ class ExperimentRunner:
         ttw_left = self.observer.time_to_wait_left()
         logger.info(f"Sleeping for {ttw_left} seconds")
         time.sleep(ttw_left)
-        logger.info(f"Starting runtime treatments")
+        logger.info("Starting runtime treatments")
         for treatment in self._get_runtime_treatments():
             logger.info(f"Injecting treatment {treatment.name}")
             treatment.start = utc_timestamp()
@@ -207,7 +200,7 @@ class ExperimentRunner:
             treatment.clean()
             treatment.end = utc_timestamp()
             logger.info(f"Treatment {treatment.name} took {treatment.end - treatment.start:.1f}s")
-        logger.info(f"Injected treatments")
+        logger.info("Injected treatments")
 
     def observe_response_variables(self) -> None:
         self.observer.initialize_variables()

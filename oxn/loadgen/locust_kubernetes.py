@@ -1,29 +1,23 @@
-import os
 import importlib
-from importlib.machinery import ModuleSpec
 import importlib.util
 import logging
-from jinja2 import Environment as JinjaEnvironment, FileSystemLoader
-
-from locust import HttpUser, TaskSet, task
-from locust.env import Environment
-from locust.stats import stats_printer, stats_history
-from locust.log import setup_logging
-
-from oxn.models.load_generator import BaseLoadGenerator
-from oxn.models.experiment_spec import ExperimentSpec
-from oxn.common.errors import LocustException, OxnException
-from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
-from oxn.models.orchestrator import Orchestrator
-import oxn.common.utils as utils
-
-from gevent import Greenlet
-from gevent.pool import Group
+import os
+from importlib.machinery import ModuleSpec
 
 import requests
+from gevent.pool import Group
+from jinja2 import Environment as JinjaEnvironment
+from jinja2 import FileSystemLoader
+from locust.env import Environment
+from locust.log import setup_logging
+from locust.stats import stats_history, stats_printer
 
-
-from oxn.models import orchestrator
+import oxn.common.utils as utils
+from locust import HttpUser
+from oxn.common.errors import LocustException
+from oxn.models.experiment_spec import ExperimentSpec
+from oxn.models.load_generator import BaseLoadGenerator
+from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +53,11 @@ class LocustKubernetesLoadgenerator(BaseLoadGenerator):
 
         if self.target:
             # When a target is provided, we expect the orchestrator to be a KubernetesOrchestrator.
-            assert isinstance(self.orchestrator, KubernetesOrchestrator), \
+            assert isinstance(self.orchestrator, KubernetesOrchestrator), (
                 "Orchestrator must be KubernetesOrchestrator if target is specified"
+            )
             self.base_address = self.orchestrator.get_address_for_service(
-                name=self.target.name,
-                namespace=self.target.namespace
+                name=self.target.name, namespace=self.target.namespace
             )
             self.port = self.target.port
 
@@ -80,9 +74,13 @@ class LocustKubernetesLoadgenerator(BaseLoadGenerator):
             locust_module = self._load_locust_file(path)
             for user_class in dir(locust_module):
                 user_class_instance = getattr(locust_module, user_class)
-                if isinstance(user_class_instance, type) and issubclass(user_class_instance, HttpUser) \
-                   and user_class_instance is not HttpUser:
+                if (
+                    isinstance(user_class_instance, type)
+                    and issubclass(user_class_instance, HttpUser)
+                    and user_class_instance is not HttpUser
+                ):
                     if not self.target:
+                        assert self.env is not None
                         self.env.user_classes.append(user_class_instance)
                     logger.info(f"Added user class {user_class_instance.__name__} from {path}")
 
@@ -108,7 +106,6 @@ class LocustKubernetesLoadgenerator(BaseLoadGenerator):
                 return f.read()
         return ""
 
-    
     def _generate_k8s_yaml(self) -> dict:
         """
         Generate Kubernetes YAML manifests using Jinja2 templates loaded from files.
@@ -117,14 +114,14 @@ class LocustKubernetesLoadgenerator(BaseLoadGenerator):
         locustfile_content = self._generate_locustfile_content()
 
         # Define the directory containing the templates.
-        templates_path = os.path.join(os.path.dirname(__file__), '../../locust/kubernetes')
+        templates_path = os.path.join(os.path.dirname(__file__), "../../locust/kubernetes")
         jinja_env = JinjaEnvironment(loader=FileSystemLoader(templates_path), trim_blocks=True, lstrip_blocks=True)
 
         # Load each template file.
-        configmap_template = jinja_env.get_template('configmap.yaml')
-        master_template = jinja_env.get_template('master.yaml')
-        worker_template = jinja_env.get_template('worker.yaml')
-        service_template = jinja_env.get_template('service.yaml')
+        configmap_template = jinja_env.get_template("configmap.yaml")
+        master_template = jinja_env.get_template("master.yaml")
+        worker_template = jinja_env.get_template("worker.yaml")
+        service_template = jinja_env.get_template("service.yaml")
 
         # Render the templates with dynamic parameters.
         configmap_yaml = configmap_template.render(locustfile_content=locustfile_content)
@@ -133,7 +130,7 @@ class LocustKubernetesLoadgenerator(BaseLoadGenerator):
             spawn_rate=self.spawn_rate,
             run_time=self.run_time,
             base_address=self.base_address,
-            port=self.port
+            port=self.port,
         )
         worker_yaml = worker_template.render(worker_replicas=2, master_host="locust-master")
 
@@ -141,7 +138,7 @@ class LocustKubernetesLoadgenerator(BaseLoadGenerator):
             "configmap": configmap_yaml,
             "master": master_yaml,
             "worker": worker_yaml,
-            "service": service_template.render()
+            "service": service_template.render(),
         }
 
     def start(self):
@@ -202,7 +199,7 @@ class LocustKubernetesLoadgenerator(BaseLoadGenerator):
         """Get the stats from the locust master."""
         if not self.target:
             return None
-    
+
         # Build the URL for the stats endpoint.
         cluster_proxy = self.orchestrator.cluster_proxy
         url = cluster_proxy.service_url(self.target.namespace, "locust-master", 8089, "stats/requests")

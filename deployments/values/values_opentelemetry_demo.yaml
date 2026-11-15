@@ -9,11 +9,11 @@ components:
   ad:
     resources:
       limits:
-        memory: 1Gi # Default is too low for the demo
+        memory: 1Gi  # Default is too low for the demo
   fraud-detection:
     resources:
       limits:
-        memory: 1Gi # Default is too low for the demo
+        memory: 1Gi  # Default is too low for the demo
   # flagd:
   #   resources:
   #     limits:

@@ -1,9 +1,13 @@
 import unittest
 from datetime import datetime
 
-from oxn.common.utils import time_string_to_seconds, defer_cleanup
-from oxn.common.utils import to_microseconds, to_milliseconds
-from oxn.common.utils import utc_timestamp, humanize_utc_timestamp
+from oxn.common.utils import (
+    humanize_utc_timestamp,
+    time_string_to_seconds,
+    to_microseconds,
+    to_milliseconds,
+    utc_timestamp,
+)
 
 
 class UtilsTest(unittest.TestCase):
@@ -40,10 +44,3 @@ class UtilsTest(unittest.TestCase):
         now = utc_timestamp()
         humanized = humanize_utc_timestamp(now)
         self.assertTrue(isinstance(humanized, datetime))
-
-    def test_it_sets_deferred_cleanup_attr(self):
-        @defer_cleanup
-        def func():
-            pass
-
-        self.assertTrue(func.defer_cleanup)

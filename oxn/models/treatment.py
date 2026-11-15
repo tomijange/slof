@@ -3,12 +3,12 @@ Purpose: Defines the base classes for treatments.
 Functionality: Provides an abstract base class Treatment with methods to be implemented by subclasses,
 and RuntimeTreatment and CompileTimeTreatment, which decide is_runtime() for them.
 Connection: Used as base classes for the treatment implementations in oxn/treatments/runtime and oxn/treatments/compile_time.
- """
+"""
 
 import abc
-from typing import List
 import logging
 import uuid
+from typing import List
 
 from oxn.common.errors import OxnException
 from oxn.common.utils import humanize_utc_timestamp
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 # TODO: think about refactoring validation of params into validator class so it can happen earlier
+
 
 class Treatment(abc.ABC):
     def __init__(self, config, name, orchestrator):
@@ -43,7 +44,7 @@ class Treatment(abc.ABC):
                 message=f"Invalid configuration for {self.__repr__()} provided.",
                 explanation="\n".join(self.messages),
             )
-        
+
         orchestrator_validates = self._validate_orchestrator()
         if not orchestrator_validates:
             raise OxnException(
@@ -97,6 +98,7 @@ class Treatment(abc.ABC):
         :return: A boolean indicating if the preconditions for this treatment are met
         """
         logger.info(f"Checking preconditions for treatment {self.name}")
+        return True
 
     @abc.abstractmethod
     def inject(self) -> None:
@@ -158,12 +160,16 @@ class Treatment(abc.ABC):
         return True
 
     @abc.abstractmethod
-    def _validate_orchestrator(self, valid_for: List[str]) -> bool:
+    def _validate_orchestrator(self) -> bool:
         """
         Validate if the orchestrator is suitable for this treatment.
         This method should return true if the orchestrator is valid, false otherwise.
         """
+
+    def _orchestrator_is_one_of(self, valid_for: List[str]) -> bool:
+        """Return true if the type of the orchestrator is in valid_for"""
         return self.orchestrator.get_orchestrator_type() in valid_for
+
 
 class RuntimeTreatment(Treatment, abc.ABC):
     """

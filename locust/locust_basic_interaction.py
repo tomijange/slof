@@ -1,7 +1,7 @@
-from locust import HttpUser, TaskSet, task, between
+from locust import HttpUser, TaskSet, between, task
+
 
 class UserBehavior(TaskSet):
-
     @task(1)
     def index(self):
         self.client.get("/")
@@ -24,10 +24,14 @@ class UserBehavior(TaskSet):
 
     @task(2)
     def add_to_cart(self):
-        self.client.post("/api/cart", json={
-            "item": {"productId": "6E92ZMYYFZ", "quantity": 2},
-            "userId": 'ab2d0fc0-7224-11ec-8ef2-b658b885fb3',
-        })
+        self.client.post(
+            "/api/cart",
+            json={
+                "item": {"productId": "6E92ZMYYFZ", "quantity": 2},
+                "userId": "ab2d0fc0-7224-11ec-8ef2-b658b885fb3",
+            },
+        )
+
 
 class WebsiteUser(HttpUser):
     tasks = [UserBehavior]

@@ -9,11 +9,11 @@ values:
 meshConfig:
   enablePrometheusMerge: true
   enableTracing: true
-  defaultConfig: 
+  defaultConfig:
     tracing:
       sampling: 1
       zipkin:
-        address: "otel-collector.system-under-evaluation.svc.cluster.local:9411" # "otel-collector.system-under-evaluation.svc.cluster.local:9411"
+        address: "otel-collector.system-under-evaluation.svc.cluster.local:9411"  # "otel-collector.system-under-evaluation.svc.cluster.local:9411"
   extensionProviders:
     - name: otel-collector
       envoyGrpc:
@@ -33,5 +33,5 @@ meshConfig:
         service: otel-collector.system-under-evaluation.svc.cluster.local
   defaultProviders:
     accessLogging:
-    - envoy
-    - otel
+      - envoy
+      - otel

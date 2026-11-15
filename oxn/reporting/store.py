@@ -6,17 +6,19 @@ Connection: Used by various components to persist and retrieve experimental data
 
 Simple HDF5-based storage
 """
+
 import pickle
 import warnings
+from typing import List
 
 import pandas as pd
-from typing import List
-from oxn.common.settings import STORAGE_NAME, TRIE_NAME
 
 # silence warning that we cant use hex strings as key names
 # we don't want table accessing by dot notation
 # due to fixed format in hdf
 from tables import NaturalNameWarning
+
+from oxn.common.settings import STORAGE_NAME, TRIE_NAME
 
 warnings.filterwarnings("ignore", category=NaturalNameWarning)
 
@@ -140,11 +142,12 @@ def remove_dataframe(key) -> None:
         store.remove(key=key)
 
 
-def consolidate_runs(experiment_key, response_variable) -> pd.DataFrame:
+def consolidate_runs(experiment_key, response_variable) -> pd.DataFrame | None:
     """
     Return a consolidated dataframe from the store
 
-    A consolidated dataframe contains all data for a given response and a given experiment key
+    A consolidated dataframe contains all data for a given response and a given experiment key.
+    Return None if the store has no data for them.
     """
     trie = Trie()
     results = trie.query(experiment_key)
@@ -152,6 +155,7 @@ def consolidate_runs(experiment_key, response_variable) -> pd.DataFrame:
     dataframes = [get_dataframe(result) for result in results]
     if dataframes:
         return pd.concat(dataframes)
+    return None
 
 
 def list_keys_for_experiment(experiment_key) -> List[str]:

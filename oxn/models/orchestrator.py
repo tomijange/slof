@@ -1,5 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import List, Tuple
+from typing import List
+
+from oxn.models.experiment_spec import ServiceReference
+
 
 class Orchestrator(ABC):
     """
@@ -11,7 +14,7 @@ class Orchestrator(ABC):
         pass
 
     @abstractmethod
-    def ready(self, expected_services: List[str] = None, timeout: int = 120) -> bool:
+    def ready(self, expected_services: List[ServiceReference] | None = None, timeout: float = 120) -> bool:
         pass
 
     @abstractmethod
@@ -22,13 +25,8 @@ class Orchestrator(ABC):
     def translate_container_names(self, container_names: List[str]):
         pass
 
-    @property
-    @abstractmethod
-    def running_services(self) -> List[str]:
-        pass
-
-    #@abstractmethod
-    #def execute_console_command(self, service: str, command: List[str]) -> Tuple[int, str]:
+    # @abstractmethod
+    # def execute_console_command(self, service: str, command: List[str]) -> Tuple[int, str]:
     #    """
     #    Execute a console command on the orchestrator
 
@@ -43,12 +41,13 @@ class Orchestrator(ABC):
     #    pass
 
     @abstractmethod
-    def get_address_for_service(self, service: str) -> str:
+    def get_address_for_service(self, namespace: str, name: str) -> str:
         """
         Get the address for a service
 
         Args:
-            service: The service to get the address for
+            namespace: The namespace of the service
+            name: The name of the service
 
         Returns:
             The address of the service
@@ -57,9 +56,9 @@ class Orchestrator(ABC):
         pass
 
     @abstractmethod
-    def get_prometheus_address(self) -> str:
+    def get_prometheus_address(self, target: str) -> str:
         """
-        Get the address for the Prometheus service
+        Get the address for the Prometheus service of a target
 
         Returns:
             The address of the Prometheus service

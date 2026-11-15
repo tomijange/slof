@@ -10,7 +10,7 @@
 | `oxn/core/` | `engine.py`, `runner.py`, `validation.py`, `context.py` |
 | `oxn/treatments/` | `runtime/` and `compile_time/`, one module per treatment |
 | `oxn/orchestration/` | `kubernetes_orchestrator.py`, `deployment.py`, `cluster_proxy.py` |
-| `oxn/loadgen/` | `locust_kubernetes.py`, `config_load_generator.py`, `file_load_generator.py`, `loadgen_config.py` |
+| `oxn/loadgen/` | `locust_kubernetes.py`, `file_load_generator.py` |
 | `oxn/observability/` | `prometheus.py`, `jaeger.py`, `observer.py`, `responses.py` |
 | `oxn/reporting/` | `report.py`, `store.py` |
 | `oxn/common/` | `errors.py`, `utils.py`, `settings.py`, `log.py` |
@@ -59,7 +59,7 @@ After the last run, the report is written to the `--report` directory.
 
 | Module | Purpose |
 |---|---|
-| `loadgen/config_load_generator.py`, `loadgen/file_load_generator.py` | Older load generators, imported by the engine but not used to run experiments |
+| `loadgen/file_load_generator.py` | Older load generator, not used to run experiments |
 
 ## Files read at runtime
 

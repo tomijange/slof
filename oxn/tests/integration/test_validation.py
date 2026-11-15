@@ -1,9 +1,11 @@
 import unittest
+
 import yaml
 
-from oxn.tests.unit.spec_mocks import experiment_spec_mock
 from oxn.core.validation import SemanticValidator, validate_syntax
 from oxn.models.experiment_spec import MetricResponseDescription, TraceResponseDescription
+from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
+from oxn.tests.unit.spec_mocks import experiment_spec_mock
 
 
 class ValidationTests(unittest.TestCase):
@@ -14,7 +16,9 @@ class ValidationTests(unittest.TestCase):
     spec = validate_syntax(yaml.safe_load(experiment_spec_mock))
 
     def setUp(self) -> None:
-        self.validator = SemanticValidator(experiment_spec=self.spec)
+        self.validator = SemanticValidator(
+            experiment_spec=self.spec, orchestrator=KubernetesOrchestrator(experiment_config=self.spec)
+        )
 
     def tearDown(self) -> None:
         self.validator.prometheus.session.close()
@@ -53,9 +57,7 @@ class ValidationTests(unittest.TestCase):
             left_window="2m",
             right_window="0m",
         )
-        self.assertFalse(
-            self.validator.validate_metric_response_description(response=mock)
-        )
+        self.assertFalse(self.validator.validate_metric_response_description(response=mock))
 
     def test_it_fetches_service_names(self):
         self.validator._populate_service_names()

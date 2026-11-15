@@ -92,6 +92,8 @@ The change adds no failing tests. Right before it, `make coverage` reported 43 f
 - Two `test_command_line` checks of an old timeout default and one `test_kubernetes_orchestration` case.
 - `test_loadgen` and `test_utils`, which do not import.
 
+[Formatting and type fixes](18-formatting-and-type-fixes.md#tests) fixes `test_jaeger`, `test_prometheus` and `test_utils` and removes `test_loadgen`.
+
 ## Documentation
 
 [Architecture](../architecture.md), [Experiments](../experiments.md) and `oxn/README.md` no longer mention Docker Compose, `pricing.py` or `--accounting`.

@@ -4,15 +4,16 @@ Functionality: Implements methods to query and process data from Prometheus and 
 Connection: Used by the Observer to collect and process response variables during experiments.
 
 Implementations of Response Variables"""
+
 import datetime
 
 import numpy as np
 import pandas as pd
 
+import oxn.common.utils as utils
+from oxn.common.errors import JaegerException, PrometheusException
 from oxn.models.experiment_spec import MetricResponseDescription, TraceResponseDescription
 from oxn.models.orchestrator import Orchestrator
-import oxn.common.utils as utils
-from oxn.common.errors import PrometheusException, JaegerException
 from oxn.models.response import ResponseVariable
 from oxn.observability.jaeger import Jaeger
 from oxn.observability.prometheus import Prometheus
@@ -24,17 +25,15 @@ class MetricResponseVariable(ResponseVariable):
         return self.id[:8]
 
     def __init__(
-            self,
-            orchestrator: Orchestrator,
-            name: str,
-            experiment_start: float,
-            experiment_end: float,
-            description: MetricResponseDescription,
-            target: str,
+        self,
+        orchestrator: Orchestrator,
+        name: str,
+        experiment_start: float,
+        experiment_end: float,
+        description: MetricResponseDescription,
+        target: str,
     ):
-        super().__init__(
-            experiment_start=experiment_start, experiment_end=experiment_end
-        )
+        super().__init__(experiment_start=experiment_start, experiment_end=experiment_end)
         self.orchestrator = orchestrator
         """Orchestrator interface to interact with docker or kubernetes"""
         self.name = name
@@ -47,13 +46,9 @@ class MetricResponseVariable(ResponseVariable):
         """User-supplied prometheus label names and values"""
         self.step = description.step
         """User-supplied prometheus step size"""
-        self.start = self.experiment_start - utils.time_string_to_seconds(
-            description.left_window
-        )
+        self.start = self.experiment_start - utils.time_string_to_seconds(description.left_window)
         """Timestamp of the start of the observation period relative to experiment start"""
-        self.end = self.experiment_end + utils.time_string_to_seconds(
-            description.right_window
-        )
+        self.end = self.experiment_end + utils.time_string_to_seconds(description.right_window)
         """Timestamp of the end of the observation period relative to experiment end"""
         self.prometheus = Prometheus(orchestrator=self.orchestrator, target=target)
         """Prometheus API to fetch metric data represented by this response variable"""
@@ -87,11 +82,11 @@ class MetricResponseVariable(ResponseVariable):
         return utils.humanize_utc_timestamp(self.end)
 
     def label(
-            self,
-            treatment_start: float,
-            treatment_end: float,
-            label_column: str,
-            label: str,
+        self,
+        treatment_start: float,
+        treatment_end: float,
+        label_column: str,
+        label: str,
     ) -> None:
         """
         Label a Prometheus dataframe. Note that Prometheus returns timestamps in seconds as a float
@@ -103,9 +98,9 @@ class MetricResponseVariable(ResponseVariable):
                 message="Cannot label dataframe",
                 explanation="Dataframe is empty for response variable: " + self.name,
             )
-        
+
         predicate = self.data["timestamp"].between(treatment_start, treatment_end)
-        
+
         self.data[label_column] = np.where(predicate, label, "NoTreatment")
 
     @staticmethod
@@ -162,9 +157,7 @@ class MetricResponseVariable(ResponseVariable):
                         }
                     )
             dataframe = pd.DataFrame(columns=columns, data=rows)
-            dataframe.set_index(
-                pd.to_datetime(dataframe.timestamp, utc=True, unit="s"), inplace=True
-            )
+            dataframe.set_index(pd.to_datetime(dataframe.timestamp, utc=True, unit="s"), inplace=True)
             return dataframe
         except (IndexError, KeyError) as exc:
             raise PrometheusException(
@@ -183,21 +176,19 @@ class MetricResponseVariable(ResponseVariable):
             end=self.end,
             step=self.step,
         )
-        self.data = self._range_query_to_df(
-            prometheus_metrics, metric_column_name=self.metric_name
-        )
+        self.data = self._range_query_to_df(prometheus_metrics, metric_column_name=self.metric_name)
         assert self.data is not None, "Prometheus dataframe is empty"
         return self.data
 
 
 class TraceResponseVariable(ResponseVariable):
     def __init__(
-            self,
-            orchestrator: Orchestrator,
-            name: str,
-            experiment_start: float,
-            experiment_end: float,
-            description: TraceResponseDescription,
+        self,
+        orchestrator: Orchestrator,
+        name: str,
+        experiment_start: float,
+        experiment_end: float,
+        description: TraceResponseDescription,
     ):
         super(TraceResponseVariable, self).__init__(
             experiment_start=experiment_start,
@@ -211,13 +202,9 @@ class TraceResponseVariable(ResponseVariable):
         """Service name to search traces in Jaeger"""
         self.limit = description.limit
         """Limit number of traces when searching with Jaeger"""
-        self.start = self.experiment_start - utils.time_string_to_seconds(
-            description.left_window
-        )
+        self.start = self.experiment_start - utils.time_string_to_seconds(description.left_window)
         """UTC Timestamp of the start of the observation period relative to the experiment start"""
-        self.end = self.experiment_end + utils.time_string_to_seconds(
-            description.right_window
-        )
+        self.end = self.experiment_end + utils.time_string_to_seconds(description.right_window)
         """UTC Timestamp of the end of the observation period relative to the experiment end"""
         self.jaeger = Jaeger(orchestrator=self.orchestrator)
         """Jaeger API to observe trace data"""
@@ -264,17 +251,22 @@ class TraceResponseVariable(ResponseVariable):
         return int(self.scaled_end_timestamp)
 
     def label(
-            self,
-            treatment_start: float,
-            treatment_end: float,
-            label_column: str,
-            label: str,
+        self,
+        treatment_start: float,
+        treatment_end: float,
+        label_column: str,
+        label: str,
     ) -> None:
         """Label a dataframe containing Jaeger spans depending on the span start timestamp"""
+        if self.data is None:
+            raise JaegerException(
+                message="Cannot label dataframe",
+                explanation="Dataframe is empty for response variable: " + self.name,
+            )
         scaled_treatment_start = utils.to_microseconds(treatment_start)
         scaled_treatment_end = utils.to_microseconds(treatment_end)
         predicate = (self.data["start_time"] >= scaled_treatment_start) & (
-                self.data["start_time"] <= scaled_treatment_end
+            self.data["start_time"] <= scaled_treatment_end
         )
         self.data[label_column] = np.where(predicate, label, "NoTreatment")
 
@@ -322,9 +314,7 @@ class TraceResponseVariable(ResponseVariable):
             dataframe = pd.DataFrame(trace_rows, columns=columns)
             dataframe["duration"] = pd.to_numeric(dataframe["duration"])
             dataframe.reset_index(inplace=True)
-            dataframe.set_index(
-                pd.to_datetime(dataframe.start_time, utc=True, unit="us"), inplace=True
-            )
+            dataframe.set_index(pd.to_datetime(dataframe.start_time, utc=True, unit="us"), inplace=True)
             dataframes.append(dataframe)
         try:
             merged = pd.concat(dataframes)

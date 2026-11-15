@@ -65,4 +65,6 @@ class LogExceptionTest(unittest.TestCase):
         except ValueError as e:
             with self.assertLogs(self.logger, level=logging.DEBUG) as logs:
                 log_exception(self.logger, e)
-        self.assertIs(logs.records[0].exc_info[0], ValueError)
+        exc_info = logs.records[0].exc_info
+        assert exc_info
+        self.assertIs(exc_info[0], ValueError)

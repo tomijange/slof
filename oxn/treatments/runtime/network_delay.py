@@ -25,12 +25,10 @@ class KubernetesNetworkDelayTreatment(RuntimeTreatment):
         for key, val in self.params().items():
             # required params
             if (
-                    key in {"namespace", "label_selector", "label", "interface", "duration", "delay_time"}
-                    and key not in self.config
+                key in {"namespace", "label_selector", "label", "interface", "duration", "delay_time"}
+                and key not in self.config
             ):
-                self.messages.append(
-                    f"Parameter {key} has to be supplied for {self.treatment_type}"
-                )
+                self.messages.append(f"Parameter {key} has to be supplied for {self.treatment_type}")
             # supplied params have correct type
             if key in self.config and not isinstance(self.config[key], val):
                 self.messages.append(
@@ -87,18 +85,23 @@ class KubernetesNetworkDelayTreatment(RuntimeTreatment):
         deployment = self.orchestrator.get_deployment(namespace, label_selector, label)
 
         assert deployment
+        assert deployment.metadata is not None
 
         try:
             response = self.orchestrator.patch_deployment_to_include_steering_sidecar_container(deployment=deployment)
             assert response
 
             if not response:
-                self.messages.append(f"Failed to patch deployment {deployment.metadata.name} in namespace {namespace} with steering sidecar container")
+                self.messages.append(
+                    f"Failed to patch deployment {deployment.metadata.name} in namespace {namespace} with steering sidecar container"
+                )
                 return False
         except Exception as e:
-            self.messages.append(f"Failed to patch deployment {deployment.metadata.name} in namespace {namespace} with steering sidecar container: {e}")
+            self.messages.append(
+                f"Failed to patch deployment {deployment.metadata.name} in namespace {namespace} with steering sidecar container: {e}"
+            )
             return False
-        
+
         return True
 
     def inject(self) -> None:
@@ -113,7 +116,7 @@ class KubernetesNetworkDelayTreatment(RuntimeTreatment):
         # optional params: use default values so we dont need to construct multiple commands
         jitter = self.config.get("delay_jitter", "0ms")
         correlation = self.config.get("delay_correlation", "0%")
-        command = f"tc qdisc add dev {interface} root netem delay {delay_time} {jitter} {correlation}"
+        # command = f"tc qdisc add dev {interface} root netem delay {delay_time} {jitter} {correlation}"
         try:
             assert namespace
             assert label_selector
@@ -125,21 +128,23 @@ class KubernetesNetworkDelayTreatment(RuntimeTreatment):
 
             assert deployment
 
-            result = self.orchestrator.set_network_delay(deployment=deployment, interface=interface, delay_time=delay_time, jitter=jitter, correlation=correlation)
-            
+            result = self.orchestrator.set_network_delay(
+                deployment=deployment,
+                interface=interface,
+                delay_time=delay_time,
+                jitter=jitter,
+                correlation=correlation,
+            )
+
             if not result:
-                logger.error(
-                    f"Failed to inject delay into pods in {namespace} with {label_selector}={label}."
-                )
+                logger.error(f"Failed to inject delay into pods in {namespace} with {label_selector}={label}.")
                 return
             logger.info(
                 f"Injected delay into pods in {namespace} with {label_selector}={label}. Waiting for {duration}s."
             )
             time.sleep(duration)
         except Exception as e:
-            logger.error(
-                f"Failed to inject delay into pods in {namespace} with {label_selector}={label}: {e}"
-            )
+            logger.error(f"Failed to inject delay into pods in {namespace} with {label_selector}={label}: {e}")
 
     def clean(self) -> None:
         super().clean()
@@ -156,10 +161,12 @@ class KubernetesNetworkDelayTreatment(RuntimeTreatment):
         assert deployment
 
         result = self.orchestrator.remove_network_delay(deployment=deployment, interface=interface)
-        
+        if not result:
+            logger.error(f"Failed to clean delay treatment from pods in {namespace} with {label_selector}={label}.")
+            return
         logger.info(f"Cleaned delay treatment from pods in {namespace} with {label_selector}={label}")
-        #self.client.close()
-            
+        # self.client.close()
+
     def _validate_orchestrator(self) -> bool:
         if self.orchestrator.get_orchestrator_type() != "kubernetes":
             self.messages.append(f"{self.name} treatment is only supported for Kubernetes orchestrators")

@@ -4,10 +4,10 @@ from unittest import mock
 import pandas as pd
 import yaml
 
+from oxn.common.utils import utc_timestamp
 from oxn.core.runner import ExperimentRunner
 from oxn.core.validation import validate_syntax
 from oxn.observability.observer import Observer
-from oxn.common.utils import utc_timestamp
 from oxn.tests.unit.spec_mocks import experiment_spec_mock
 
 

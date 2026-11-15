@@ -5,13 +5,10 @@
 
 
 import json
-import os
 import random
 import uuid
-import logging
 
-from locust import HttpUser, task, between
-
+from locust import HttpUser, between, task
 
 categories = [
     "binoculars",
@@ -36,8 +33,9 @@ products = [
     "HQTGWGPNH4",
 ]
 
-people_file = open('locust/people.json')
+people_file = open("locust/people.json")
 people = json.load(people_file)
+
 
 class WebsiteUser(HttpUser):
     wait_time = between(1, 10)
@@ -102,8 +100,5 @@ class WebsiteUser(HttpUser):
         checkout_person["userId"] = user
         self.client.post("/api/checkout", json=checkout_person)
 
-
     def on_start(self):
         self.index()
-
-

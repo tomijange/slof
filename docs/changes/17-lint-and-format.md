@@ -55,8 +55,8 @@ ty resolves every import against the installed packages, so the Lint workflow ru
 
 | Limitation | Status |
 |---|---|
-| The repository does not pass `make lint` yet, so the Lint workflow fails. `make format` fixes most findings. Seven unused variables and the yamllint findings in `experiments/test.yml`, the Locust manifests and the Helm values need fixing by hand. | Open |
-| ty finds 160 problems in `oxn/` and `locust/`. 64 of them are attributes on values that can be `None`, most of them fields of the Kubernetes client, such as `metadata.name`. Three are imports that no longer resolve since [Package layout](01-package-layout.md), in `oxn/loadgen/loadgen_config.py`, `oxn/tests/unit/test_loadgen.py` and `oxn/tests/unit/test_utils.py`. | Open |
+| The repository does not pass `make lint` yet, so the Lint workflow fails. `make format` fixes most findings. Seven unused variables and the yamllint findings in `experiments/test.yml`, the Locust manifests and the Helm values need fixing by hand. | Fixed in [Formatting and type fixes](18-formatting-and-type-fixes.md) |
+| ty finds 160 problems in `oxn/` and `locust/`. 64 of them are attributes on values that can be `None`, most of them fields of the Kubernetes client, such as `metadata.name`. Three are imports that no longer resolve since [Package layout](01-package-layout.md), in `oxn/loadgen/loadgen_config.py`, `oxn/tests/unit/test_loadgen.py` and `oxn/tests/unit/test_utils.py`. | Fixed in [Formatting and type fixes](18-formatting-and-type-fixes.md) |
 | ty is still in beta, with 0.0.x versions. New versions can add or change rules, so the pin is updated by hand. | Open |
 | `evaluation/` is not type checked. Its scripts and notebooks need packages such as `seaborn` and `scikit-learn` that `setup.cfg` does not install. | Open |
 | Ruff selects only a small set of rules. More, such as `UP` or `B`, would find a few hundred places in the GOXN code. | Open |

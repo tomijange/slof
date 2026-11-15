@@ -8,6 +8,10 @@ ignore: |
   locust/kubernetes/configmap.yaml
   locust/kubernetes/master.yaml
   locust/kubernetes/worker.yaml
+  # Copied from mosesliao/kubernetes-locust, kept as they were
+  locust/kubernetes/master-deployment.yaml
+  locust/kubernetes/slave-deployment.yaml
+  locust/kubernetes/scripts-cm.yaml
 
 rules:
   # Specs and values files are single documents without ---
@@ -17,6 +21,9 @@ rules:
   # Kubernetes manifests often do not indent lists under their key
   indentation:
     indent-sequences: consistent
+  # Flow mappings in the specs are written { key: value }
+  braces:
+    max-spaces-inside: 1
   # Commented-out entries keep the indentation they would have
   comments-indentation: disable
   # on: in GitHub workflows is a key, not a boolean
