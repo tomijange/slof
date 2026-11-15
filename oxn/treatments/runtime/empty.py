@@ -4,6 +4,7 @@ import time
 
 from oxn.models.treatment import RuntimeTreatment
 from oxn.models.treatment_params import DurationParams
+from oxn.treatments.kubernetes import KubernetesTreatment
 
 
 class EmptyParams(DurationParams):
@@ -27,19 +28,10 @@ class EmptyTreatment(RuntimeTreatment[EmptyParams]):
     def preconditions(self) -> bool:
         return True
 
-    def _validate_orchestrator(self) -> bool:
-        return True
 
-
-class EmptyKubernetesTreatment(EmptyTreatment):
+class EmptyKubernetesTreatment(KubernetesTreatment[EmptyParams], EmptyTreatment):
     """
     Empty treatment to represent a simple observation of response variables, on Kubernetes only
     """
 
     action = "empty_kubernetes"
-
-    def _validate_orchestrator(self) -> bool:
-        if self.orchestrator.get_orchestrator_type() != "kubernetes":
-            self.messages.append(f"{self.name} treatment is only supported for Kubernetes orchestrators")
-            return False
-        return True

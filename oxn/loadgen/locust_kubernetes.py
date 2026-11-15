@@ -151,11 +151,8 @@ class LocustKubernetesLoadgenerator(BaseLoadGenerator):
             # Generate and deploy YAMLs on Kubernetes.
             self.resources = self._generate_k8s_yaml()
             assert isinstance(self.orchestrator, KubernetesOrchestrator), "Orchestrator must be KubernetesOrchestrator"
-            # Assumes the orchestrator exposes a method `deploy_yaml(yaml_str)` to deploy a YAML manifest.
-            self.orchestrator.deploy_configmap_yaml(self.resources["configmap"])
-            self.orchestrator.deploy_deployment_yaml(self.resources["master"])
-            self.orchestrator.deploy_deployment_yaml(self.resources["worker"])
-            self.orchestrator.deploy_service_yaml(self.resources["service"])
+            for name in ("configmap", "master", "worker", "service"):
+                self.orchestrator.deploy_yaml(self.resources[name])
             logger.info("Deployed locust master and worker pods on Kubernetes.")
         else:
             # Local runner mode.
@@ -177,11 +174,8 @@ class LocustKubernetesLoadgenerator(BaseLoadGenerator):
             failures = sum(entry["num_failures"] for entry in self.stats["stats"])
             logger.info(f"Load generation sent {requests_sent} requests, {failures} failed")
             assert isinstance(self.orchestrator, KubernetesOrchestrator), "Orchestrator must be KubernetesOrchestrator"
-            # Optionally, use the orchestrator to delete deployed resources.
-            self.orchestrator.delete_configmap_yaml(self.resources["configmap"])
-            self.orchestrator.delete_deployment_yaml(self.resources["master"])
-            self.orchestrator.delete_deployment_yaml(self.resources["worker"])
-            self.orchestrator.delete_service_yaml(self.resources["service"])
+            for name in ("configmap", "master", "worker", "service"):
+                self.orchestrator.delete_yaml(self.resources[name])
             logger.info("Cleaned up Kubernetes resources for the locust load test.")
         else:
             if self.env and self.env.runner:

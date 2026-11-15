@@ -54,6 +54,8 @@ The abstract `Orchestrator` in `oxn/models/orchestrator.py` now declares the sig
 
 `Treatment._validate_orchestrator()` takes no arguments, as in every treatment and in the call in `Treatment.__init__`. The check that the treatments called through `super()` is now `Treatment._orchestrator_is_one_of(valid_for)`. `Treatment.preconditions()` returns `True` after logging, so treatments that only call `super()` keep working.
 
+[Change 20](20-orchestrator-interface.md#treatments) removes `_orchestrator_is_one_of`: `_validate_orchestrator()` returns `True` by default, and Kubernetes-only treatments subclass `KubernetesTreatment`. It also moves `patch_deployment_to_include_steering_sidecar_container` to `SteeringController.add_sidecar`.
+
 `ResponseVariable` declares `name`, `start` and `end` as set by its subclasses and `data` as an optional dataframe. `Observer.variables()` returns metric and trace variables, which `Reporter.gather_interaction` expects. `SemanticValidator` takes the orchestrator that `Prometheus` and `Jaeger` need, so it can be created again.
 
 **Why.** ty checks calls against the declared types. With the old declarations, every caller of the orchestrator and every treatment was an error, and a new orchestrator or treatment written against the base class would not have worked.

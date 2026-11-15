@@ -18,17 +18,17 @@ from oxn.models.treatment_params import TreatmentParams
 from oxn.treatments.compile_time import (
     DeploymentScaleTreatment,
     KubernetesApplySecurityContextTreatment,
-    KubernetesMetricsExportIntervalTreatment,
-    KubernetesProbabilisticHeadSamplingTreatment,
-    KubernetesPrometheusIntervalTreatment,
+    MetricsExportIntervalTreatment,
+    ProbabilisticHeadSamplingTreatment,
+    PrometheusIntervalTreatment,
 )
 from oxn.treatments.runtime import (
     EmptyKubernetesTreatment,
     EmptyTreatment,
-    KubernetesCorruptPacketTreatment,
-    KubernetesKillTreatment,
-    KubernetesNetworkDelayTreatment,
-    KubernetesNetworkPacketLossTreatment,
+    KillTreatment,
+    NetworkDelayTreatment,
+    PacketCorruptionTreatment,
+    PacketLossTreatment,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,13 +36,13 @@ logger = logging.getLogger(__name__)
 BUILTIN_TREATMENTS: List[type[Treatment]] = [
     EmptyTreatment,
     EmptyKubernetesTreatment,
-    KubernetesNetworkDelayTreatment,
-    KubernetesNetworkPacketLossTreatment,
-    KubernetesCorruptPacketTreatment,
-    KubernetesKillTreatment,
-    KubernetesPrometheusIntervalTreatment,
-    KubernetesProbabilisticHeadSamplingTreatment,
-    KubernetesMetricsExportIntervalTreatment,
+    NetworkDelayTreatment,
+    PacketLossTreatment,
+    PacketCorruptionTreatment,
+    KillTreatment,
+    PrometheusIntervalTreatment,
+    ProbabilisticHeadSamplingTreatment,
+    MetricsExportIntervalTreatment,
     DeploymentScaleTreatment,
     KubernetesApplySecurityContextTreatment,
 ]

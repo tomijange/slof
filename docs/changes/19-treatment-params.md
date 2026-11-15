@@ -40,7 +40,7 @@ Each treatment module defines the model of its treatment next to the class, for 
 
 **Why.** The spec model already rejects unknown keys and wrong types in every other section, with the location of the error. Treatment params were the last part of the spec checked by hand, and the hand-written checks had grown apart.
 
-**What this breaks.** Code that reads `treatment.config` reads `treatment.params` and attributes instead of keys. Own treatments need `action` and `Params`, see [Own treatments](#own-treatments).
+**What this breaks.** Code that reads `treatment.config` reads `treatment.params` and attributes instead of keys. Own treatments need `action` and `Params`, see [Own treatments](../experiments.md#own-treatments).
 
 ## Checked while the spec is parsed
 
@@ -78,6 +78,8 @@ Every treatment declares `action` as a class attribute that matches its key:
 | `KubernetesCorruptPacketTreatment`, `KubernetesMetricsExportIntervalTreatment` | A method | `kubernetes_corrupt`, `kubernetes_otel_metrics_interval` |
 
 `EmptyKubernetesTreatment` now subclasses `EmptyTreatment` instead of copying it.
+
+[Change 20](20-orchestrator-interface.md#treatments) renames `KubernetesPrometheusIntervalTreatment`, `KubernetesCorruptPacketTreatment` and `KubernetesMetricsExportIntervalTreatment` to `PrometheusIntervalTreatment`, `PacketCorruptionTreatment` and `MetricsExportIntervalTreatment`.
 
 **Why.** `_extend_treatments` registered own treatments under `treatment.action`, read from the class. For a property or method that is the function object, not a string, so own treatments written like most built-in ones could not be selected. It also changed the class-level `treatment_keys` dict, so own treatments of one runner leaked into every later one.
 

@@ -2,11 +2,11 @@ import unittest
 from unittest import mock
 
 from kubernetes import client
-from kubernetes.client.exceptions import ApiException
 from requests import PreparedRequest, Session
 from requests.adapters import HTTPAdapter, Retry
 from requests.structures import CaseInsensitiveDict
 
+from oxn.common.errors import OrchestratorException
 from oxn.loadgen.locust_kubernetes import LocustKubernetesLoadgenerator
 from oxn.observability.jaeger import Jaeger
 from oxn.observability.prometheus import Prometheus
@@ -100,7 +100,7 @@ class ClusterProxySessionTests(unittest.TestCase):
 
 class SteeringControllerTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.controller = SteeringController(mock.Mock(), mock.Mock(), ClusterProxy(configuration()))
+        self.controller = SteeringController(mock.Mock(), ClusterProxy(configuration()))
 
     @mock.patch.object(Session, "post")
     def test_it_posts_through_the_proxy_and_not_to_the_pod_ip(self, post):
@@ -119,16 +119,14 @@ class SteeringControllerTests(unittest.TestCase):
         post.return_value.json.return_value = {"status": "ok"}
         cases = [
             (
-                lambda: self.controller.set_network_loss([pod()], "eth0", "5%"),
-                "tc qdisc add dev eth0 root netem loss random 5%",
+                lambda: self.controller.set_network_loss([pod()], "eth0", 5),
+                "tc qdisc add dev eth0 root netem loss random 5",
             ),
             (
                 lambda: self.controller.set_network_corruption([pod()], "eth0", "5%", "25%"),
                 "tc qdisc add dev eth0 root netem corrupt 5% 25%",
             ),
-            (lambda: self.controller.remove_network_delay([pod()], "eth0"), "tc qdisc del dev eth0 root netem"),
-            (lambda: self.controller.remove_network_loss([pod()], "eth0"), "tc qdisc del dev eth0 root netem"),
-            (lambda: self.controller.remove_network_corruption([pod()], "eth0"), "tc qdisc del dev eth0 root netem"),
+            (lambda: self.controller.remove_netem([pod()], "eth0"), "tc qdisc del dev eth0 root netem"),
         ]
         for call, command in cases:
             with self.subTest(command=command):
@@ -139,22 +137,22 @@ class SteeringControllerTests(unittest.TestCase):
     def test_it_sets_a_timeout(self, post):
         post.return_value.status_code = 200
         post.return_value.json.return_value = {"status": "ok"}
-        self.controller.remove_network_delay([pod()], "eth0")
+        self.controller.remove_netem([pod()], "eth0")
         self.assertIsNotNone(post.call_args.kwargs["timeout"])
 
     @mock.patch.object(Session, "post")
     def test_it_raises_on_http_errors(self, post):
         post.return_value.status_code = 503
         post.return_value.reason = "Service Unavailable"
-        with self.assertRaises(ApiException):
-            self.controller.remove_network_delay([pod()], "eth0")
+        with self.assertRaises(OrchestratorException):
+            self.controller.remove_netem([pod()], "eth0")
 
     @mock.patch.object(Session, "post")
     def test_it_logs_failed_commands(self, post):
         post.return_value.status_code = 200
         post.return_value.json.return_value = {"status": "error", "message": "exit status 2"}
         with self.assertLogs("oxn.steering.steering_controller", level="ERROR") as logs:
-            self.controller.remove_network_delay([pod()], "eth0")
+            self.controller.remove_netem([pod()], "eth0")
         self.assertIn("exit status 2", logs.output[0])
 
 

@@ -1,13 +1,14 @@
-"""Kill pods of a service"""
+"""Kill instances of a workload"""
 
 import logging
+from typing import List
 
 from pydantic import Field
 
-from oxn.common.errors import OrchestratorException
+from oxn.common.errors import OxnException
 from oxn.models.treatment import RuntimeTreatment
 from oxn.models.treatment_params import PodSelectorParams
-from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
+from oxn.models.workload import WorkloadInstance
 
 logger = logging.getLogger(__name__)
 
@@ -16,69 +17,58 @@ class KillParams(PodSelectorParams):
     """Params of kubernetes_kill"""
 
     amount_to_kill: int = Field(ge=1)
-    """How many of the matching pods to kill"""
+    """How many of the matching instances to kill"""
 
 
-class KubernetesKillTreatment(RuntimeTreatment[KillParams]):
+class KillTreatment(RuntimeTreatment[KillParams]):
     """
-    Kill a Kubernetes Pod.
+    Kill instances of a workload, pods on Kubernetes
     """
 
     action = "kubernetes_kill"
     Params = KillParams
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instances: List[WorkloadInstance] = []
+
     def preconditions(self) -> bool:
-        """Check if the kubernetes pod is running"""
+        """Check that enough instances of the workload are running"""
         super().preconditions()
-        namespace = self.params.namespace
-        label_selector = self.params.label_selector
-        label = self.params.label
+        workload = self.params.workload
         amount_to_kill = self.params.amount_to_kill
         try:
-            assert isinstance(self.orchestrator, KubernetesOrchestrator)
-            self.pods = KubernetesOrchestrator.get_pods(self.orchestrator, namespace, label_selector, label)
-            if self.pods is None:
-                self.messages.append(f"Pod with {label_selector}={label} not found in namespace {namespace}")
-                return False
-
-            if len(self.pods) < amount_to_kill:
-                self.messages.append(
-                    f"Amount to kill is higher than the amount of pods matching the label selector. Amount to kill: {amount_to_kill}, amount of pods found for label selector: {len(self.pods)}"
-                )
-                return False
-
-            for pod in self.pods:
-                assert pod.metadata is not None
-                if pod.status and pod.status.phase != "Running":
-                    self.messages.append(f"At least one Pod ({pod.metadata.name}) is not running ({pod.status.phase})")
-                    return False
-
-        except OrchestratorException as e:
+            self.instances = self.orchestrator.get_instances(workload)
+        except OxnException as e:
             self.messages.append(str(e.message))
             return False
+
+        if len(self.instances) < amount_to_kill:
+            self.messages.append(
+                f"Amount to kill is higher than the amount of instances matching {workload}. Amount to kill: {amount_to_kill}, instances found: {len(self.instances)}"
+            )
+            return False
+
+        for instance in self.instances:
+            if not instance.running:
+                self.messages.append(f"At least one instance ({instance.name}) is not running ({instance.state})")
+                return False
 
         return True
 
     def inject(self) -> None:
-        assert self.pods
-        assert self.orchestrator
-        assert isinstance(self.orchestrator, KubernetesOrchestrator)
-        if not self.pods:
-            logger.error("No pods found to kill")
+        if not self.instances:
+            logger.error("No instances found to kill")
             return
 
         amount_to_kill = self.params.amount_to_kill
-        pods_to_kill = self.pods[:amount_to_kill]
-        for pod in pods_to_kill:
-            KubernetesOrchestrator.kill_pod(self.orchestrator, pod)
+        for instance in self.instances[:amount_to_kill]:
+            self.orchestrator.kill_instance(instance)
 
-        # TODO: scale down deployment of the pods?
+        # TODO: scale down the workload of the instances?
 
-        logger.debug(f"Killed {amount_to_kill} pods.")
+        logger.debug(f"Killed {amount_to_kill} instances.")
 
     def clean(self) -> None:
-        # TODO: Wait untill als pods are running again?
+        # TODO: Wait until all instances are running again?
         super().clean()
-
-    def _validate_orchestrator(self) -> bool:
-        return self._orchestrator_is_one_of(["kubernetes"])

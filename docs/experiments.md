@@ -113,12 +113,14 @@ The first five are used by the shipped specs.
 | `kubernetes_otel_metrics_interval` | Compile-time | Sets `OTEL_METRIC_EXPORT_INTERVAL` of a deployment |
 | `kubernetes_prometheus_interval` | Compile-time | Sets the global scrape interval, evaluation interval and scrape timeout of the SUE's Prometheus |
 | `delay` | Runtime | Adds network latency to the pods of a deployment |
-| `empty_kubernetes` | Runtime | Like `empty`, but only with the Kubernetes orchestrator |
+| `empty_kubernetes` | Runtime | Like `empty`, but fails with orchestrators other than Kubernetes |
 | `kubernetes_loss` | Runtime | Drops a share of the packets of the pods of a deployment |
 | `kubernetes_corrupt` | Runtime | Corrupts a share of the packets of the pods of a deployment |
 | `kubernetes_kill` | Runtime | Kills pods of a deployment |
 | `scale_deployment` | Compile-time | Scales a deployment and back to its replicas before |
 | `security_context_kubernetes` | Compile-time | Adds Linux capabilities to every container of a deployment |
+
+All of them except `empty_kubernetes` and `security_context_kubernetes` only use the [orchestrator interface](architecture.md#orchestrators), so they would also run with another orchestrator. The `kubernetes` in the other action names is historical.
 
 ### Parameters
 
@@ -172,9 +174,29 @@ class PauseTreatment(RuntimeTreatment[PauseParams]):
 
     def preconditions(self) -> bool:
         return True
+```
 
-    def _validate_orchestrator(self) -> bool:
-        return True
+A treatment changes the SUE through `self.orchestrator`, using the methods of the `Orchestrator` interface in `oxn/models/orchestrator.py`, such as `scale`, `restart` or `set_network_delay`. They take a `WorkloadSelector`, which a params model that extends `PodSelectorParams` builds as `self.params.workload`. A treatment that only uses these methods works with any orchestrator.
+
+A treatment that needs Kubernetes objects subclasses `KubernetesTreatment` from `oxn/treatments/kubernetes.py` as well, before `RuntimeTreatment` or `CompileTimeTreatment`. `oxn` then rejects it with other orchestrators, and `self.kubernetes` is the `KubernetesOrchestrator`:
+
+```python
+from oxn.models.treatment import CompileTimeTreatment
+from oxn.models.treatment_params import PodSelectorParams
+from oxn.treatments.kubernetes import KubernetesTreatment
+
+
+class RevisionParams(PodSelectorParams):
+    limit: int
+
+
+class RevisionHistoryTreatment(KubernetesTreatment[RevisionParams], CompileTimeTreatment[RevisionParams]):
+    action = "revision_history"
+    Params = RevisionParams
+
+    def inject(self) -> None:
+        deployment = self.kubernetes.get_workload_deployment(self.params.workload)
+        ...
 ```
 
 ## Results

@@ -81,6 +81,8 @@ The treatment classes moved from `oxn/core/treatments.py` to the new `oxn/treatm
 | Compile-time | `compile_time/deployment_scale.py` | `DeploymentScaleTreatment` | `scale_deployment` |
 | Compile-time | `compile_time/prometheus_interval.py` | `KubernetesPrometheusIntervalTreatment` | `kubernetes_prometheus_interval` |
 
+[Change 20](20-orchestrator-interface.md#treatments) renames the classes of the treatments that work with any orchestrator, for example `KubernetesKillTreatment` to `KillTreatment`, and adds `runtime/netem.py`.
+
 `oxn/models/treatment.py` adds two base classes next to `Treatment`. `RuntimeTreatment.is_runtime()` returns `True` and `CompileTimeTreatment.is_runtime()` returns `False`, so the classes no longer override it. Every treatment keeps the kind it had. The runner still splits the treatments by `is_runtime()`, so treatments loaded with `--extend` can subclass `Treatment` directly as before. The class bodies are unchanged apart from the base class, the removed `is_runtime()` and imports trimmed to what each module uses.
 
 **Why.** One file of 1200 lines held eleven treatments of two kinds, and the kind was a `return True` or `return False` at the end of each class. In a module and package of its own, each treatment is easier to find, and the package shows its kind, which decides when it runs.

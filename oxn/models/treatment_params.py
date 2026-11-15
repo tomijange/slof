@@ -12,6 +12,7 @@ from typing import Annotated
 from pydantic import AfterValidator, BaseModel, ConfigDict
 
 from oxn.common.utils import time_string_format_regex, time_string_to_seconds, validate_time_string
+from oxn.models.workload import WorkloadSelector
 
 
 def _check_time_string(value: str) -> str:
@@ -76,13 +77,18 @@ class DurationParams(TreatmentParams):
 
 
 class PodSelectorParams(TreatmentParams):
-    """Params that select the deployment, and with it the pods, a treatment targets"""
+    """Params that select the workload a treatment targets, on Kubernetes a deployment and its pods"""
 
     namespace: str
     label_selector: str
     """The label key, for example app.kubernetes.io/name"""
     label: str
     """The value of the label, for example recommendation"""
+
+    @property
+    def workload(self) -> WorkloadSelector:
+        """The selected workload, as the orchestrator takes it"""
+        return WorkloadSelector(namespace=self.namespace, label_selector=self.label_selector, label=self.label)
 
 
 class NetworkParams(PodSelectorParams, DurationParams):

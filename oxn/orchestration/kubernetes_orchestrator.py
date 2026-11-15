@@ -1,27 +1,45 @@
-""" """
+"""
+Purpose: Runs experiments on Kubernetes.
+Functionality: Implements oxn.models.orchestrator.Orchestrator with the Kubernetes API: a workload is a deployment,
+    its instances are pods, the SUE's Prometheus and collector are configured through ConfigMaps. Network faults go
+    through the steering sidecar, see oxn.steering.steering_controller.SteeringController. Methods that take
+    V1Deployment and V1Pod objects are Kubernetes only, for treatments based on oxn.treatments.kubernetes.
+Connection: Created by the engine for experiment.orchestrator: kubernetes.
+"""
 
 import logging
 import time
-from typing import List, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 import yaml
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
 from kubernetes.client.models.v1_deployment import V1Deployment
 from kubernetes.client.models.v1_pod import V1Pod
-from kubernetes.stream import stream
 
 from oxn.common.errors import OrchestratorException, OrchestratorResourceNotFoundException, OxnException
-from oxn.models.experiment_spec import ExperimentSpec, ServiceReference
-from oxn.models.orchestrator import Orchestrator  # Import the abstract base class
+from oxn.common.log import log_exception
+from oxn.models.experiment_spec import ExperimentSpec, ServiceReference, Services
+from oxn.models.orchestrator import Orchestrator
+from oxn.models.workload import WorkloadInstance, WorkloadSelector
 from oxn.orchestration.cluster_proxy import ClusterProxy
 from oxn.orchestration.deployment import Deployment
+from oxn.orchestration.kubernetes_objects import name_and_namespace, pod_containers, pod_selector
 from oxn.steering.steering_controller import SteeringController
 
 logger = logging.getLogger(__name__)
 
-# Constants
-OXN_SIDECAR_CONTAINER_NAME = "oxn-steering-container"
+SUE_NAMESPACE = "system-under-evaluation"
+PROMETHEUS_CONFIGMAP = "prometheus"
+PROMETHEUS = WorkloadSelector(namespace=SUE_NAMESPACE, label_selector="app.kubernetes.io/name", label="prometheus")
+"""The SUE's Prometheus, whose ConfigMap the scrape values are written to"""
+PROMETHEUS_CONFIG_KEY = "prometheus.yml"
+OTEL_COLLECTOR_CONFIGMAP = "otel-collector"
+OTEL_COLLECTOR_CONFIG_KEY = "relay"
+OTEL_COLLECTOR = WorkloadSelector(
+    namespace=SUE_NAMESPACE, label_selector="app.kubernetes.io/name", label="opentelemetry-collector"
+)
+"""The SUE's OpenTelemetry collector, whose ConfigMap the sampling values are written to"""
 
 
 class KubernetesOrchestrator(Orchestrator):
@@ -33,39 +51,24 @@ class KubernetesOrchestrator(Orchestrator):
         self.api_client = client.AppsV1Api()
         self.cluster_proxy = ClusterProxy()
         """HTTP access to pods and services, which are not routable from outside the cluster"""
-
-        logger.info("Loading all running resources in k8s cluster")
-
-        self.list_of_all_pods = self.kube_client.list_pod_for_all_namespaces(watch=False)
-        # for i in self.list_of_all_pods.items:
-        # print("%s\t%s\t%s" % (i.status.pod_ip, i.metadata.namespace, i.metadata.name))
-        pass
-
-        self.list_of_all_services = self.kube_client.list_service_for_all_namespaces(watch=False)
-        # for i in self.list_of_all_services.items:
-        # print("%s\t%s" % (i.metadata.namespace, i.metadata.name))
-
-        """Check if all of experiment_config.sue.required services are running"""
         self.required_services = self.experiment_config.experiment.sue.required
-        # self._check_required_services(self.required_services)
+        """The services ready() checks by default"""
 
-        self.steering_controller = SteeringController(
-            kube_client=self.kube_client, api_client=self.api_client, cluster_proxy=self.cluster_proxy
-        )
+        self.steering_controller = SteeringController(api_client=self.api_client, cluster_proxy=self.cluster_proxy)
+        """Applies network faults through the steering sidecar"""
 
         self.deployment = Deployment.from_experiment_spec(self.experiment_config)
         """Deployment of the SUE, None if the spec expects an already running SUE"""
 
-    def _check_required_services(self, required_services) -> bool:
-        """Check if all of experiment_config.sue.required services are running"""
+    def _check_required_services(self, required_services: List[ServiceReference]) -> bool:
+        """Raise an OxnException unless every service exists"""
         for service in required_services:
             service_name = service.name
             namespace = service.namespace
             try:
-                service = self.kube_client.read_namespaced_service(service_name, namespace)
+                self.kube_client.read_namespaced_service(service_name, namespace)
                 logger.debug(f"Service {service_name} in namespace {namespace} is running")
             except ApiException as e:
-                # logger.error(f"Service {service_name} in namespace {namespace} is not running")
                 raise OxnException(
                     message=f"Service {service_name} in namespace {namespace} is not running but set as a required service",
                     explanation=str(e),
@@ -78,9 +81,6 @@ class KubernetesOrchestrator(Orchestrator):
             logger.info("No deployment in experiment spec, expecting the SUE to be running already")
             return
         self.deployment.deploy()
-        # pods and services were listed on init, before the SUE existed
-        self.list_of_all_pods = self.kube_client.list_pod_for_all_namespaces(watch=False)
-        self.list_of_all_services = self.kube_client.list_service_for_all_namespaces(watch=False)
 
     def ready(self, expected_services: List[ServiceReference] | None = None, timeout: float = 120) -> bool:
         if expected_services is None:
@@ -93,103 +93,6 @@ class KubernetesOrchestrator(Orchestrator):
             return
         self.deployment.teardown()
 
-    def translate_container_names(self, container_names: List[str]):
-        logger.info("translate_container_names noop implementation")
-        pass
-
-    """
-    Get all pods for a given service and execute a command on them and aggregate the results
-    If the command fails on any pod, the function will return the error code and the error message
-    """
-
-    def execute_console_command_on_all_matching_pods(
-        self, label_selector: str, label: str, namespace: str, command: List[str]
-    ) -> Tuple[int, str]:
-        """
-        Execute a console command via the kubernetes orchestrator on pods with a given label
-
-        Args:
-            label: The name of the pods as specified in app.kubernetes.io/name=<label>
-            command: The command to execute
-
-        Returns:
-            A tuple of the return code and the output of the command
-
-        Throws:
-            OrchestratorResourceNotFoundException: If no pods are found for the given label
-            OrchestratorException: If an error occurs while executing the command
-
-        """
-        # logger.info("execute_console_command noop implementation for service %s with command %s", service, command)
-
-        # Get all pods with label app.kubernetes.io/name=service
-        pods = self.kube_client.list_namespaced_pod(namespace=namespace, label_selector=f"{label_selector}={label}")
-        # pods = self.kube_client.list_pod_for_all_namespaces(label_selector=f"app.kubernetes.io/name={label}")
-
-        if not pods.items:
-            raise OrchestratorResourceNotFoundException(
-                message=f"No pods found with the given label selector {label_selector}={label}",
-                explanation="No pods found with the given label selector {label_selector}={label}",
-            )
-
-        # Execute the command on each pod
-        for pod in pods.items:
-            try:
-                exec_command = command
-                assert pod.metadata is not None
-                assert pod.metadata.labels is not None
-                assert pod.metadata.labels[label_selector]
-                assert pod.spec is not None
-
-                container = None
-                if pod.spec.containers and pod.spec.containers.__len__() > 1:
-                    logger.warning(
-                        f"Pod {pod.metadata.name} in namespace {label} has more than one container. Using the first container to execute the command. (Container: {pod.spec.containers[0].name})"
-                    )
-                    container = pod.spec.containers[0]
-                else:
-                    container = pod.spec.containers[0]
-
-                wrapped_command = ["sh", "-c", f"{' '.join(exec_command)}; echo $?"]
-
-                response = stream(
-                    self.kube_client.connect_get_namespaced_pod_exec,
-                    name=pod.metadata.name,
-                    namespace=pod.metadata.namespace,
-                    command=wrapped_command,
-                    container=container.name,
-                    stderr=True,
-                    stdin=False,
-                    stdout=True,
-                    tty=False,
-                )
-
-                if response == "0":
-                    return 0, "Success"
-
-                # if response includes "not found" or "no such file or directory" then the command was not found
-                if "not found" in response or "no such file or directory" in response:
-                    return -1, f"Command not found: {' '.join(exec_command)}"
-
-                # Split the response to separate the command output and exit status
-                response_lines = response.split("\n")
-                exit_status_line = response_lines[-2].strip()
-                print(exit_status_line)
-                exit_status = int(exit_status_line)
-                command_output = "\n".join(response_lines[:-2])
-
-                return exit_status, command_output
-
-                logger.info(response)
-            except ApiException as e:
-                pod_name = pod.metadata.name if pod.metadata else None
-                raise OrchestratorException(
-                    message=f"Error while executing command {command} on pod {pod_name} in namespace {label}: {e.body}",
-                    explanation=str(e),
-                )
-
-        return 0, "Success"
-
     def apply_security_context_to_deployment(
         self, label_selector: str, label: str, namespace: str, capabilities: dict
     ) -> Tuple[int, str]:
@@ -197,70 +100,42 @@ class KubernetesOrchestrator(Orchestrator):
         Apply a security context to a deployment
 
         Args:
-            label_selector: The label selector for the deployment
-            label: The name of the deployment
+            label_selector: The label key that selects the deployment
+            label: The value of the label
             namespace: The namespace of the deployment
-            security_context: The security context to apply
+            capabilities: The Linux capabilities, applied to every container
 
         Returns:
-            A tuple of the return code and the output of the command
-
-        Throws:
-            OrchestratorResourceNotFoundException: If no pods are found for the given label
-            OrchestratorException: If an error occurs while executing the command
+            0 and "Success", or 1 and the error
 
         """
         try:
-            # Get the deployment
             deployment = self.get_deployment(namespace, label_selector, label)
-            assert deployment.metadata is not None
-            assert deployment.metadata.name is not None
-            assert deployment.metadata.namespace is not None
-            assert deployment.spec is not None
-            assert deployment.spec.template.spec is not None
+            name, namespace = name_and_namespace(deployment)
+            containers = [
+                {"name": container.name, "securityContext": {"capabilities": capabilities}}
+                for container in pod_containers(deployment)
+            ]
+            patch_body = {"spec": {"template": {"spec": {"containers": containers}}}}
 
-            # Apply the security context to each container
-            container_bodies = []
-            containers = deployment.spec.template.spec.containers
-            for container in containers:
-                container_body = {"name": container.name, "securityContext": {"capabilities": capabilities}}
-                container_bodies.append(container_body)
-
-            # Prepare the patch body
-            patch_body = {"spec": {"template": {"spec": {"containers": container_bodies}}}}
-
-            print(patch_body)
-            # Apply the patch
-            response = self.api_client.patch_namespaced_deployment(
-                name=deployment.metadata.name,
-                namespace=deployment.metadata.namespace,
-                body=patch_body,
-            )
-            if not response:
-                logger.error(
-                    f"Failed to apply security context to deployment '{deployment.metadata.name}' in namespace '{deployment.metadata.namespace}'."
-                )
-                return (
-                    1,
-                    f"Failed to apply security context to deployment '{deployment.metadata.name}' in namespace '{deployment.metadata.namespace}'.",
-                )
+            logger.debug(f"Patching deployment {name} with {patch_body}")
+            if not self.api_client.patch_namespaced_deployment(name=name, namespace=namespace, body=patch_body):
+                message = f"Failed to apply security context to deployment '{name}' in namespace '{namespace}'."
+                logger.error(message)
+                return 1, message
             return 0, "Success"
 
-        except ApiException as e:
-            print(f"Exception when calling AppsV1Api->patch_namespaced_deployment: {e}")
-            return 1, str(e)
         except Exception as e:
-            print(f"Unexpected error: {e}")
+            log_exception(logger, e, "Failed to apply the security context")
             return 1, str(e)
 
     def get_address_for_service(self, namespace: str, name: str) -> str:
         """
-        Get the first address found for a service
+        Get the cluster IP of a service, or the IP of its first pod for a headless service
 
         Args:
-            label_selector: The label selector for the service
-            label: The label of the service
             namespace: The namespace of the service
+            name: The name of the service
 
         Returns:
             The address of the service
@@ -273,28 +148,29 @@ class KubernetesOrchestrator(Orchestrator):
                 message=f"No service found for service {name}",
                 explanation="No service found for the given service",
             )
-        assert service.spec is not None
-        cluster_ip = service.spec.cluster_ip
+        cluster_ip = service.spec.cluster_ip if service.spec else None
 
         if cluster_ip is None or cluster_ip == "None":
             logger.info(
                 f"Service {name} in namespace {namespace} has no cluster IP. Falling back to pod IP by selecting first pod and receiving its IP"
             )
-            # fall back to pod IP
-            assert service.metadata is not None
-            assert service.metadata.labels is not None
-            name_label_of_service = service.metadata.labels["app.kubernetes.io/name"]
+            labels = (service.metadata.labels if service.metadata else None) or {}
+            name_label = labels.get("app.kubernetes.io/name")
+            if name_label is None:
+                raise OrchestratorResourceNotFoundException(
+                    message=f"No address found for service {name}",
+                    explanation="The service has no cluster IP and no app.kubernetes.io/name label to find its pods",
+                )
             pods = self.kube_client.list_namespaced_pod(
-                namespace=namespace, label_selector=f"app.kubernetes.io/name={name_label_of_service}"
+                namespace=namespace, label_selector=f"app.kubernetes.io/name={name_label}"
             )
             if not pods.items:
                 raise OrchestratorResourceNotFoundException(
                     message=f"No pods found for service {name}",
                     explanation="No pods found for the given service",
                 )
-            pod_status = pods.items[0].status
-            assert pod_status is not None
-            cluster_ip = pod_status.pod_ip
+            first_pod = pods.items[0]
+            cluster_ip = first_pod.status.pod_ip if first_pod.status else None
 
         if cluster_ip is None:
             raise OrchestratorResourceNotFoundException(
@@ -325,9 +201,16 @@ class KubernetesOrchestrator(Orchestrator):
             The name and namespace of the Jaeger service
 
         """
-        assert self.experiment_config.experiment.services is not None
+        return self._services().jaeger
 
-        return self.experiment_config.experiment.services.jaeger
+    def _services(self) -> Services:
+        services = self.experiment_config.experiment.services
+        if services is None:
+            raise OrchestratorException(
+                message="The spec has no experiment.services",
+                explanation="Prometheus and Jaeger are found through experiment.services",
+            )
+        return services
 
     def get_prometheus_address(self, target: str) -> str:
         """
@@ -352,9 +235,7 @@ class KubernetesOrchestrator(Orchestrator):
             The name and namespace of the Prometheus service
 
         """
-        assert self.experiment_config.experiment.services is not None
-
-        for prometheus_config in self.experiment_config.experiment.services.prometheus:
+        for prometheus_config in self._services().prometheus:
             if prometheus_config.target == target:
                 return prometheus_config
 
@@ -363,15 +244,124 @@ class KubernetesOrchestrator(Orchestrator):
             explanation="No Prometheus configuration found for the given target",
         )
 
-    def get_orchestrator_type(self) -> str:
-        """
-        Get the orchestrator type
+    # Workloads, see Orchestrator
 
-        Returns:
-            The orchestrator type
+    def get_instances(self, workload: WorkloadSelector) -> List[WorkloadInstance]:
+        instances = []
+        for pod in self.get_pods(workload.namespace, workload.label_selector, workload.label):
+            name, namespace = name_and_namespace(pod)
+            phase = (pod.status.phase if pod.status else None) or "Unknown"
+            instances.append(WorkloadInstance(name=name, namespace=namespace, state=phase, running=phase == "Running"))
+        return instances
 
-        """
-        return "kubernetes"
+    def kill_instance(self, instance: WorkloadInstance) -> None:
+        self.kill_pod(client.V1Pod(metadata=client.V1ObjectMeta(name=instance.name, namespace=instance.namespace)))
+
+    def get_replicas(self, workload: WorkloadSelector) -> int:
+        spec = self.get_workload_deployment(workload).spec
+        # Kubernetes runs one replica if the spec sets none
+        return spec.replicas if spec and spec.replicas is not None else 1
+
+    def scale(self, workload: WorkloadSelector, replicas: int) -> None:
+        deployment = self.get_workload_deployment(workload)
+        if self.scale_deployment(deployment, replicas) is None:
+            raise OrchestratorException(
+                message=f"Failed to scale the deployment with {workload} to {replicas}",
+                explanation="The API server returned an empty response",
+            )
+
+    def restart(self, workload: WorkloadSelector) -> None:
+        self.restart_pods_of_deployment(self.get_workload_deployment(workload))
+
+    def is_ready(self, workload: WorkloadSelector) -> bool:
+        return self.is_deployment_ready(self.get_workload_deployment(workload))
+
+    def get_environment_variable(self, workload: WorkloadSelector, name: str) -> Optional[str]:
+        for env_var in self._main_container(self.get_workload_deployment(workload)).env or []:
+            if env_var.name == name:
+                return env_var.value
+        return None
+
+    def set_environment_variable(self, workload: WorkloadSelector, name: str, value: str) -> None:
+        # the deployment is read again on every try, a patch of an outdated object fails
+        for i in range(0, 10):
+            deployment = self.get_workload_deployment(workload)
+            deployment_name, namespace = name_and_namespace(deployment)
+            container = self._main_container(deployment)
+            if container.env is None:
+                container.env = []
+            for env_var in container.env:
+                if env_var.name == name:
+                    env_var.value = value
+                    break
+            else:
+                container.env.append(client.V1EnvVar(name=name, value=value))
+            try:
+                self.api_client.patch_namespaced_deployment(name=deployment_name, namespace=namespace, body=deployment)
+                return
+            except ApiException as e:
+                logger.error(
+                    f"Error while updating the deployment with {workload}: {e.body}. Waiting for 1 second and retrying. Retry {i}"
+                )
+                time.sleep(1)
+
+        raise OrchestratorException(
+            message=f"Error while updating the deployment with {workload}",
+            explanation=f"Setting the environment variable {name} failed 10 times",
+        )
+
+    @staticmethod
+    def _main_container(deployment: V1Deployment) -> client.V1Container:
+        """The first container of the pod template, the one environment variables are read from and written to"""
+        containers = pod_containers(deployment)
+        if not containers:
+            raise OrchestratorException(
+                message=f"Deployment {name_and_namespace(deployment)[0]} has no containers",
+                explanation="Its pod template lists none",
+            )
+        return containers[0]
+
+    # Network faults, through the steering sidecar
+
+    def prepare_network_faults(self, workload: WorkloadSelector) -> None:
+        deployment = self.get_workload_deployment(workload)
+        if self.steering_controller.add_sidecar(deployment):
+            self._wait_until_deployment_ready(deployment, "adding the steering container")
+
+    def set_network_delay(
+        self, workload: WorkloadSelector, interface: str, delay_time: str, jitter: str, correlation: str
+    ) -> None:
+        self.steering_controller.set_network_delay(
+            self._workload_pods(workload), interface, delay_time, jitter, correlation
+        )
+
+    def set_network_loss(self, workload: WorkloadSelector, interface: str, loss: float) -> None:
+        self.steering_controller.set_network_loss(self._workload_pods(workload), interface, loss)
+
+    def set_network_corruption(
+        self, workload: WorkloadSelector, interface: str, percentage: str, correlation: str
+    ) -> None:
+        self.steering_controller.set_network_corruption(
+            self._workload_pods(workload), interface, percentage, correlation
+        )
+
+    def remove_network_faults(self, workload: WorkloadSelector, interface: str) -> None:
+        self.steering_controller.remove_netem(self._workload_pods(workload), interface)
+
+    def _workload_pods(self, workload: WorkloadSelector) -> List[V1Pod]:
+        pods = self.pods_of_deployment(self.get_workload_deployment(workload))
+        if not pods:
+            raise OrchestratorResourceNotFoundException(
+                message=f"No pods found for the deployment with {workload}",
+                explanation="The deployment has no pods to apply the network fault to",
+            )
+        return pods
+
+    # Kubernetes only
+
+    def get_workload_deployment(self, workload: WorkloadSelector) -> V1Deployment:
+        """Return the deployment of a workload"""
+        return self.get_deployment(workload.namespace, workload.label_selector, workload.label)
 
     def get_deployment(self, namespace, label_selector, label) -> V1Deployment:
         """
@@ -408,21 +398,10 @@ class KubernetesOrchestrator(Orchestrator):
             replicas: The number of replicas
 
         """
-        assert deployment is not None
-        assert deployment.spec is not None
-        assert deployment.metadata is not None
-        assert deployment.metadata.name is not None
-        assert deployment.metadata.namespace is not None
-        assert deployment.spec.replicas is not None
-        assert replicas >= 0
-
-        deployment.spec.replicas = replicas
-        response = self.api_client.patch_namespaced_deployment_scale(
-            name=deployment.metadata.name,
-            namespace=deployment.metadata.namespace,
-            body=deployment,
+        name, namespace = name_and_namespace(deployment)
+        return self.api_client.patch_namespaced_deployment_scale(
+            name=name, namespace=namespace, body={"spec": {"replicas": replicas}}
         )
-        return response
 
     def get_pods(self, namespace, label_selector, label) -> List[V1Pod]:
         """
@@ -453,120 +432,14 @@ class KubernetesOrchestrator(Orchestrator):
             pod: The pod to kill
 
         """
-        assert pod is not None
-        assert pod.metadata is not None
-        assert pod.metadata.name is not None
-        assert pod.metadata.namespace is not None
+        name, namespace = name_and_namespace(pod)
         try:
-            response = self.kube_client.delete_namespaced_pod(
-                name=pod.metadata.name,
-                namespace=pod.metadata.namespace,
-                grace_period_seconds=0,
-            )
-            return response
+            return self.kube_client.delete_namespaced_pod(name=name, namespace=namespace, grace_period_seconds=0)
         except ApiException as e:
             raise OrchestratorException(
-                message=f"Error while deleting pod {pod.metadata.name} in namespace {pod.metadata.namespace}: {e.body}",
+                message=f"Error while deleting pod {name} in namespace {namespace}: {e.body}",
                 explanation=str(e),
             )
-
-    def set_deployment_env_parameter(
-        self, deployment: V1Deployment, environment_variable_name: str, environment_variable_value: str
-    ):
-        """
-        Set an environment variable for a deployment
-
-        Args:
-            deployment: The deployment to set the environment variable for
-            environment_variable_name: The name of the environment variable
-            environment_variable_value: The value of the environment variable
-
-
-        """
-        assert deployment is not None
-        assert deployment.spec is not None
-        assert deployment.metadata is not None
-        assert deployment.metadata.name is not None
-        assert deployment.metadata.namespace is not None
-        assert deployment.spec.template is not None
-        assert deployment.spec.template.spec is not None
-        assert deployment.spec.template.spec.containers is not None
-        assert environment_variable_name is not None
-        assert environment_variable_value is not None
-
-        new_env_var = client.V1EnvVar(name=environment_variable_name, value=environment_variable_value)
-        name = deployment.metadata.name
-        namespace = deployment.metadata.namespace
-
-        # repeate until it is working
-        for i in range(0, 10):
-            try:
-                deployment = self.get_deployment(
-                    namespace=namespace,
-                    label_selector="app.kubernetes.io/name",
-                    label=name,
-                )
-                assert deployment.spec is not None
-                assert deployment.spec.template.spec is not None
-
-                containers = deployment.spec.template.spec.containers
-                container = containers[0]
-
-                if container.env is None:
-                    container.env = []
-
-                # check if env variable already exists and update it
-                is_updated = False
-                for env_var in container.env:
-                    if env_var.name == environment_variable_name:
-                        env_var.value = environment_variable_value
-                        is_updated = True
-                        break
-                if not is_updated:
-                    container.env.append(new_env_var)
-
-                response = self.api_client.patch_namespaced_deployment(
-                    name=name,
-                    namespace=namespace,
-                    body=deployment,
-                )
-                return response
-            except ApiException as e:
-                logger.error(
-                    f"Error while updating deployment {name} in namespace {namespace}: {e.body}. Waiting for 1 second and retrying. Retry {i}"
-                )
-                time.sleep(1)
-
-        raise OrchestratorException(
-            message=f"Error while updating deployment {name} in namespace {namespace}",
-            explanation="Error while updating deployment",
-        )
-
-    def get_deployment_env_parameters(self, deployment: V1Deployment) -> List[client.V1EnvVar]:
-        """
-        Get the environment variables for a deployment
-
-        Args:
-            deployment: The deployment to get the environment variables for
-
-        Returns:
-            The environment variables of the deployment
-
-        """
-        assert deployment is not None
-        assert deployment.spec is not None
-        assert deployment.metadata is not None
-        assert deployment.metadata.name is not None
-        assert deployment.metadata.namespace is not None
-        assert deployment.spec.template is not None
-        assert deployment.spec.template.spec is not None
-        assert deployment.spec.template.spec.containers is not None
-
-        containers = deployment.spec.template.spec.containers
-        container = containers[0]
-        if container.env is None:
-            return []
-        return container.env
 
     def is_deployment_ready(self, deployment: V1Deployment) -> bool:
         """
@@ -579,326 +452,113 @@ class KubernetesOrchestrator(Orchestrator):
             True if the deployment is ready, False otherwise
 
         """
-        assert deployment is not None
-        assert deployment.metadata is not None
-        assert deployment.metadata.name is not None
-        assert deployment.metadata.namespace is not None
+        name, namespace = name_and_namespace(deployment)
+        # the status of the given object is outdated
+        status = self.api_client.read_namespaced_deployment_status(name=name, namespace=namespace).status
+        if status is None:
+            return False
+        replicas = status.replicas or 0
+        return status.ready_replicas == replicas and replicas > 0
 
-        # update deployment status
-        deployment = self.api_client.read_namespaced_deployment_status(
-            name=deployment.metadata.name,
-            namespace=deployment.metadata.namespace,
+    def get_prometheus_scrape_values(self) -> Tuple[str, str, str]:
+        """Read the global scrape interval, evaluation interval and scrape timeout from the Prometheus ConfigMap"""
+        _, prometheus_config = self._read_configmap_yaml(PROMETHEUS_CONFIGMAP, PROMETHEUS_CONFIG_KEY)
+        scrape = prometheus_config["global"]
+        return scrape["scrape_interval"], scrape["evaluation_interval"], scrape["scrape_timeout"]
+
+    def set_prometheus_scrape_values(self, scrape_interval: str, evaluation_interval: str, scrape_timeout: str) -> None:
+        """Write the global scrape values to the Prometheus ConfigMap and restart Prometheus"""
+        configmap, prometheus_config = self._read_configmap_yaml(PROMETHEUS_CONFIGMAP, PROMETHEUS_CONFIG_KEY)
+        prometheus_config["global"].update(
+            scrape_interval=scrape_interval, evaluation_interval=evaluation_interval, scrape_timeout=scrape_timeout
         )
-
-        assert deployment.status is not None
-        replicas = deployment.status.replicas or 0
-        return deployment.status.ready_replicas == replicas and replicas > 0
-
-    def set_prometheus_scrape_values(
-        self, scrape_interval, evaluation_interval, scrape_timeout, configmap_name="prometheus"
-    ) -> None:
-        """
-        Set the Prometheus scrape values
-
-        Args:
-            scrape_interval: The scrape interval
-            evaluation_interval: The evaluation interval
-            scrape_timeout: The scrape timeout
-
-        """
-
-        # TODO: make this more generic
-        try:
-            configmap = self.kube_client.read_namespaced_config_map(
-                name=configmap_name, namespace="system-under-evaluation"
-            )
-        except ApiException as e:
-            raise OrchestratorException(
-                message=f"Error while reading ConfigMap {configmap_name} in namespace system-under-evaluation: {e.body}",
-                explanation=str(e),
-            )
-
-        assert configmap is not None
-        assert isinstance(configmap, client.V1ConfigMap)
-        assert configmap.data is not None
-
-        prometheus_config_yaml = configmap.data.get("prometheus.yml")
-
-        if not prometheus_config_yaml:
-            raise OrchestratorException(
-                message="prometheus.yml not found in ConfigMap",
-                explanation="prometheus.yml not found in ConfigMap",
-            )
-
-        prometheus_config = yaml.safe_load(prometheus_config_yaml)
-
-        if scrape_interval is not None:
-            prometheus_config["global"]["scrape_interval"] = scrape_interval
-        if evaluation_interval is not None:
-            prometheus_config["global"]["evaluation_interval"] = evaluation_interval
-        if scrape_timeout is not None:
-            prometheus_config["global"]["scrape_timeout"] = scrape_timeout
-
-        updated_prometheus_config_yaml = yaml.dump(prometheus_config, default_flow_style=False)
-
-        configmap.data["prometheus.yml"] = updated_prometheus_config_yaml
-
-        try:
-            self.kube_client.patch_namespaced_config_map(
-                name=configmap_name, namespace="system-under-evaluation", body=configmap
-            )
-            logger.info(f"ConfigMap {configmap_name} updated successfully.")
-        except ApiException as e:
-            raise OrchestratorException(
-                message=f"Error while updating ConfigMap {configmap_name} in namespace system-under-evaluation: {e.body}",
-                explanation=str(e),
-            )
-
-    def get_prometheus_scrape_values(self, configmap_name="prometheus") -> Tuple[str, str, str]:
-        """
-        Get the Prometheus scrape values
-
-        Returns:
-            A tuple of the scrape interval, evaluation interval, and scrape timeout
-
-        """
-
-        try:
-            configmap = self.kube_client.read_namespaced_config_map(
-                name=configmap_name, namespace="system-under-evaluation"
-            )
-        except ApiException as e:
-            raise OrchestratorException(
-                message=f"Error while reading ConfigMap {configmap_name} in namespace system-under-evaluation: {e.body}",
-                explanation=str(e),
-            )
-
-        assert configmap is not None
-        assert isinstance(configmap, client.V1ConfigMap)
-        assert configmap.data is not None
-
-        prometheus_config_yaml = configmap.data.get("prometheus.yml")
-
-        if not prometheus_config_yaml:
-            raise OrchestratorException(
-                message="prometheus.yml not found in ConfigMap",
-                explanation="prometheus.yml not found in ConfigMap",
-            )
-
-        prometheus_config = yaml.safe_load(prometheus_config_yaml)
-
-        scrape_interval = prometheus_config["global"]["scrape_interval"]
-        evaluation_interval = prometheus_config["global"]["evaluation_interval"]
-        scrape_timeout = prometheus_config["global"]["scrape_timeout"]
-
-        return scrape_interval, evaluation_interval, scrape_timeout
+        self._write_configmap_yaml(PROMETHEUS_CONFIGMAP, configmap, PROMETHEUS_CONFIG_KEY, prometheus_config)
+        self.restart(PROMETHEUS)
 
     def get_otel_collector_probabilistic_sampling_values(self) -> Tuple[str, str]:
+        """Read the sampling percentage and hash seed of the probabilistic sampler from the collector ConfigMap"""
+        _, collector_config = self._read_configmap_yaml(OTEL_COLLECTOR_CONFIGMAP, OTEL_COLLECTOR_CONFIG_KEY)
+        sampler = collector_config["processors"]["probabilistic_sampler"]
+        return sampler["sampling_percentage"], sampler["hash_seed"]
+
+    def set_otel_collector_probabilistic_sampling_values(self, sampling_percentage: float, hash_seed: int) -> None:
         """
-        Get the OpenTelemetry Collector probabilistic sampling values
+        Write the sampling percentage to the collector ConfigMap, in proportional mode, and restart the collector
 
-        Returns:
-            A tuple of the sampling rate and hash seed
-
+        The hash seed is not written, the sampler keeps the one from the ConfigMap.
         """
+        configmap, collector_config = self._read_configmap_yaml(OTEL_COLLECTOR_CONFIGMAP, OTEL_COLLECTOR_CONFIG_KEY)
+        sampler = collector_config["processors"]["probabilistic_sampler"]
+        sampler["sampling_percentage"] = float(sampling_percentage)
+        sampler["mode"] = "proportional"
+        self._write_configmap_yaml(OTEL_COLLECTOR_CONFIGMAP, configmap, OTEL_COLLECTOR_CONFIG_KEY, collector_config)
+        # TODO: it seems there might be a way to reload config maps without restarting the pods in some cases. This should be investigated (https://kubernetes.io/docs/concepts/configuration/configmap/#mounted-configmaps-are-updated-automatically)
+        self.restart(OTEL_COLLECTOR)
 
-        configmap_name = "otel-collector"
-
+    def _read_configmap_yaml(self, name: str, key: str) -> Tuple[client.V1ConfigMap, dict]:
+        """Read a ConfigMap of the SUE and parse the YAML file stored under key"""
         try:
-            configmap = self.kube_client.read_namespaced_config_map(
-                name=configmap_name, namespace="system-under-evaluation"
-            )
+            configmap = self.kube_client.read_namespaced_config_map(name=name, namespace=SUE_NAMESPACE)
         except ApiException as e:
             raise OrchestratorException(
-                message=f"Error while reading ConfigMap {configmap_name} in namespace system-under-evaluation: {e.body}",
+                message=f"Error while reading ConfigMap {name} in namespace {SUE_NAMESPACE}: {e.body}",
                 explanation=str(e),
             )
-
-        assert configmap is not None
-        assert isinstance(configmap, client.V1ConfigMap)
-        assert configmap.data is not None
-
-        otel_collector_config_yaml = configmap.data.get("relay")
-
-        if not otel_collector_config_yaml:
+        content = (configmap.data or {}).get(key)
+        if not content:
             raise OrchestratorException(
-                message="relay.yaml not found in ConfigMap",
-                explanation="relay.yaml not found in ConfigMap",
+                message=f"{key} not found in ConfigMap {name} in namespace {SUE_NAMESPACE}",
+                explanation=f"The ConfigMap has no key {key}",
             )
+        return configmap, yaml.safe_load(content)
 
-        otel_collector_config = yaml.safe_load(otel_collector_config_yaml)
-
-        sampling_rate = otel_collector_config["processors"]["probabilistic_sampler"]["sampling_percentage"]
-        hash_seed = otel_collector_config["processors"]["probabilistic_sampler"]["hash_seed"]
-
-        return sampling_rate, hash_seed
-
-    def set_otel_collector_probabilistic_sampling_values(self, sampling_percentage, hash_seed):
-        """
-        Set the OpenTelemetry Collector probabilistic sampling values
-
-        Args:
-            sampling_percentage: The sampling percentage for the head based probabilistic sampler between 0 and 100
-            hash_seed: The hash seed
-
-        """
-
-        configmap_name = "otel-collector"
-
+    def _write_configmap_yaml(self, name: str, configmap: client.V1ConfigMap, key: str, content: dict) -> None:
+        """Store content as YAML under key in a ConfigMap read with _read_configmap_yaml"""
+        configmap.data = {**(configmap.data or {}), key: yaml.dump(content, default_flow_style=False)}
         try:
-            configmap = self.kube_client.read_namespaced_config_map(
-                name=configmap_name, namespace="system-under-evaluation"
-            )
+            self.kube_client.patch_namespaced_config_map(name=name, namespace=SUE_NAMESPACE, body=configmap)
         except ApiException as e:
             raise OrchestratorException(
-                message=f"Error while reading ConfigMap {configmap_name} in namespace system-under-evaluation: {e.body}",
+                message=f"Error while updating ConfigMap {name} in namespace {SUE_NAMESPACE}: {e.body}",
                 explanation=str(e),
             )
-
-        assert configmap is not None
-        assert isinstance(configmap, client.V1ConfigMap)
-        assert configmap.data is not None
-
-        otel_collector_config_yaml = configmap.data.get("relay")
-
-        if not otel_collector_config_yaml:
-            raise OrchestratorException(
-                message="relay not found in ConfigMap",
-                explanation="relay not found in ConfigMap",
-            )
-
-        otel_collector_config = yaml.safe_load(otel_collector_config_yaml)
-
-        otel_collector_config["processors"]["probabilistic_sampler"]["sampling_percentage"] = float(sampling_percentage)
-        # otel_collector_config['processors']['probabilistic_sampler']['hash_seed'] = hash_seed
-        otel_collector_config["processors"]["probabilistic_sampler"]["mode"] = "proportional"
-        #     mode: "proportional"
-
-        updated_otel_collector_config_yaml = yaml.dump(otel_collector_config, default_flow_style=False)
-
-        configmap.data["relay"] = updated_otel_collector_config_yaml
-
-        try:
-            self.kube_client.patch_namespaced_config_map(
-                name=configmap_name, namespace="system-under-evaluation", body=configmap
-            )
-            logger.info(f"ConfigMap {configmap_name} updated successfully.")
-        except ApiException as e:
-            raise OrchestratorException(
-                message=f"Error while updating ConfigMap {configmap_name} in namespace system-under-evaluation: {e.body}",
-                explanation=str(e),
-            )
+        logger.info(f"ConfigMap {name} updated successfully.")
 
     def restart_pods_of_deployment(self, deployment: V1Deployment):
         """
-        Restart pods for a service
+        Restart the pods of a deployment and wait until it is ready
 
         Args:
             deployment: The deployment to restart the pods for
 
         """
-        assert deployment is not None
-        assert deployment.metadata is not None
-        assert deployment.metadata.name is not None
-        assert deployment.metadata.namespace is not None
-        assert deployment.spec is not None
-        assert deployment.spec.selector is not None
-        assert deployment.spec.selector.match_labels is not None
-
-        # Extract the label selector from the deployment spec
-        label_selector = deployment.spec.selector.match_labels
-        label_selector_str = ",".join([f"{key}={value}" for key, value in label_selector.items()])
-
-        # List all pods with the label selector
-        pods = self.kube_client.list_namespaced_pod(
-            namespace=deployment.metadata.namespace, label_selector=label_selector_str
-        )
-
-        if not pods.items:
+        name, namespace = name_and_namespace(deployment)
+        pods = self.pods_of_deployment(deployment)
+        if not pods:
             raise OrchestratorResourceNotFoundException(
-                message=f"No pods found for deployment {deployment.metadata.name}",
+                message=f"No pods found for deployment {name}",
                 explanation="No pods found for the given deployment",
             )
 
-        for pod in pods.items:
-            assert pod.metadata is not None
+        for pod in pods:
             self.kill_pod(pod)
-            logger.info(
-                f"Pod {pod.metadata.name} in namespace {deployment.metadata.namespace} has been killed because of restart"
-            )
+            logger.info(f"Pod {name_and_namespace(pod)[0]} in namespace {namespace} has been killed because of restart")
 
+        self._wait_until_deployment_ready(deployment, "restart")
+
+    def _wait_until_deployment_ready(self, deployment: V1Deployment, reason: str) -> None:
+        """Wait up to about 90 seconds for a deployment to be ready after a change that replaces its pods"""
+        name, _ = name_and_namespace(deployment)
         time.sleep(4)
         for i in range(0, 10):
             if self.is_deployment_ready(deployment):
-                break
+                logger.info(f"Deployment {name} is ready after {reason}")
+                return
             time.sleep(i * 2)
-            logger.info(f"Waiting for deployment {deployment.metadata.name} to be ready after restart. Retry {i}")
+            logger.info(f"Waiting for deployment {name} to be ready after {reason}. Retry {i}")
+        logger.warning(f"Deployment {name} is still not ready after {reason}")
 
-        logger.info(f"Deployment {deployment.metadata.name} is ready after restart")
-
-    def patch_deployment_to_include_steering_sidecar_container(self, deployment: V1Deployment):
-        """
-        Patch a deployment to include a sidecar container
-
-        Args:
-            deployment: The deployment to patch
-
-        """
-        assert deployment is not None
-        assert deployment.metadata is not None
-        assert deployment.metadata.name is not None
-        assert deployment.metadata.namespace is not None
-        assert deployment.spec is not None
-        assert deployment.spec.template is not None
-        assert deployment.spec.template.spec is not None
-        assert deployment.spec.template.spec.containers is not None
-
-        # check if sidecar container already exists
-        for container in deployment.spec.template.spec.containers:
-            if container.name == OXN_SIDECAR_CONTAINER_NAME:
-                logger.info(
-                    f"Sidecar container {OXN_SIDECAR_CONTAINER_NAME} already exists in deployment {deployment.metadata.name} in namespace {deployment.metadata.namespace}. Skipping patching"
-                )
-                return True
-
-        logger.info(
-            f"Adding sidecar container {OXN_SIDECAR_CONTAINER_NAME} to deployment {deployment.metadata.name} in namespace {deployment.metadata.namespace}"
-        )
-
-        # Add the sidecar container
-        sidecar_container = client.V1Container(
-            name=OXN_SIDECAR_CONTAINER_NAME,
-            image=f"julianlegler/{OXN_SIDECAR_CONTAINER_NAME}:latest",
-            image_pull_policy="Always",
-            security_context=client.V1SecurityContext(
-                privileged=True,
-            ),
-        )
-        deployment.spec.template.spec.containers.append(sidecar_container)
-
-        # Patch the deployment
-        response = self.api_client.patch_namespaced_deployment(
-            name=deployment.metadata.name,
-            namespace=deployment.metadata.namespace,
-            body=deployment,
-        )
-
-        if not response:
-            raise OrchestratorException(
-                message=f"Error while patching deployment {deployment.metadata.name} in namespace {deployment.metadata.namespace}",
-                explanation="The API server returned an empty response",
-            )
-
-        time.sleep(4)
-        for i in range(0, 10):
-            if self.is_deployment_ready(deployment):
-                break
-            time.sleep(i * 2)
-            logger.info(f"Waiting for deployment {deployment.metadata.name} to be ready after restart. Retry {i}")
-
-        return True
-
-    def _pods_of_deployment(self, deployment: V1Deployment) -> List[V1Pod]:
+    def pods_of_deployment(self, deployment: V1Deployment) -> List[V1Pod]:
         """
         List the pods that the selector of a deployment matches
 
@@ -906,362 +566,72 @@ class KubernetesOrchestrator(Orchestrator):
             deployment: The deployment to list the pods for
 
         """
-        assert deployment.metadata is not None
-        assert deployment.metadata.namespace is not None
-        assert deployment.spec is not None
-        assert deployment.spec.selector.match_labels is not None
+        _, namespace = name_and_namespace(deployment)
+        return self.kube_client.list_namespaced_pod(namespace=namespace, label_selector=pod_selector(deployment)).items
 
-        label_selector = deployment.spec.selector.match_labels
-        label_selector_str = ",".join([f"{key}={value}" for key, value in label_selector.items()])
-        pods = self.kube_client.list_namespaced_pod(
-            namespace=deployment.metadata.namespace, label_selector=label_selector_str
-        )
-        assert pods.items
-        return pods.items
-
-    def set_network_delay(self, deployment: V1Deployment, interface, delay_time, jitter, correlation):
+    def deploy_yaml(self, yaml_str: str):
         """
-        Set network delay for a deployment
+        Create the Deployment, ConfigMap or Service a manifest describes, replacing one with the same name
 
         Args:
-            deployment: The deployment to set the network delay for
-            interface: The network interface to set the delay for
-            delay_time: The delay time in ms
-            jitter: The jitter in ms
-            correlation: The correlation
+            yaml_str: The manifest
 
         """
-        return self.steering_controller.set_network_delay(
-            self._pods_of_deployment(deployment), interface, delay_time, jitter, correlation
-        )
-
-    def remove_network_delay(self, deployment: V1Deployment, interface):
-        """
-        Remove network delay for a deployment
-
-        Args:
-            deployment: The deployment to remove the network delay for
-            interface: The network interface to remove the delay for
-
-        """
-        return self.steering_controller.remove_network_delay(self._pods_of_deployment(deployment), interface)
-
-    def set_network_loss(self, deployment: V1Deployment, interface, loss):
-        """
-        Set network loss for a deployment
-
-        Args:
-            deployment: The deployment to set the network loss for
-            interface: The network interface to set the loss for
-            loss: The loss percentage
-
-        """
-        return self.steering_controller.set_network_loss(self._pods_of_deployment(deployment), interface, loss)
-
-    def remove_network_loss(self, deployment: V1Deployment, interface):
-        """
-        Remove network loss for a deployment
-
-        Args:
-            deployment: The deployment to remove the network loss for
-            interface: The network interface to remove the loss for
-
-        """
-        return self.steering_controller.remove_network_loss(self._pods_of_deployment(deployment), interface)
-
-    def set_network_corruption(self, deployment: V1Deployment, interface, percentage, correlation):
-        """
-        Set network corruption for a deployment
-
-        Args:
-            deployment: The deployment to set the network corruption for
-            interface: The network interface to set the corruption for
-            corruption: The corruption percentage
-
-        """
-        return self.steering_controller.set_network_corruption(
-            self._pods_of_deployment(deployment), interface, percentage, correlation
-        )
-
-    def remove_network_corruption(self, deployment: V1Deployment, interface):
-        """
-        Remove network corruption for a deployment
-
-        Args:
-            deployment: The deployment to remove the network corruption for
-            interface: The network interface to remove the corruption for
-
-        """
-        return self.steering_controller.remove_network_corruption(self._pods_of_deployment(deployment), interface)
-
-    def deploy_deployment_yaml(self, yaml_str: str):
-        """
-        Deploy a yaml file
-
-        Args:
-            yaml_str: The yaml file to deploy
-
-        """
-        assert yaml_str is not None
-        assert yaml_str != ""
-
-        # Load the yaml file
+        body = self._load_manifest(yaml_str)
+        create, delete, kind = self._manifest_calls(body)
+        name, namespace = body["metadata"]["name"], body["metadata"]["namespace"]
         try:
-            body = yaml.safe_load(yaml_str)
-        except yaml.YAMLError as e:
-            raise OrchestratorException(
-                message="Error while loading yaml file",
-                explanation=str(e),
-            )
-        assert body is not None
-
-        # Deploy the yaml file
-        try:
-            response = self.api_client.create_namespaced_deployment(
-                body=body,
-                namespace=body["metadata"]["namespace"],
-            )
+            return create(body=body, namespace=namespace)
         except ApiException as e:
             if "already exists" not in str(e):
-                raise OrchestratorException(
-                    message="Error while deploying deployment",
-                    explanation=str(e),
-                )
-            logger.warning(
-                f"Deployment {body['metadata']['name']} already exists in namespace {body['metadata']['namespace']}. Trying to delete it and create it again."
-            )
-            try:
-                self.api_client.delete_namespaced_deployment(
-                    name=body["metadata"]["name"],
-                    namespace=body["metadata"]["namespace"],
-                )
-                response = self.api_client.create_namespaced_deployment(
-                    body=body,
-                    namespace=body["metadata"]["namespace"],
-                )
-                logger.info(
-                    f"Deployment {body['metadata']['name']} in namespace {body['metadata']['namespace']} has been deleted and created again successfully"
-                )
-            except ApiException as e:
-                raise OrchestratorException(
-                    message="Error while deploying deployment",
-                    explanation=str(e),
-                )
-
+                raise OrchestratorException(message=f"Error while deploying {kind} {name}", explanation=str(e))
+        logger.warning(f"{kind} {name} already exists in namespace {namespace}. Deleting it and creating it again.")
+        try:
+            delete(name=name, namespace=namespace)
+            response = create(body=body, namespace=namespace)
+        except ApiException as e:
+            raise OrchestratorException(message=f"Error while deploying {kind} {name}", explanation=str(e))
+        logger.info(f"{kind} {name} in namespace {namespace} has been deleted and created again successfully")
         return response
 
-    def deploy_configmap_yaml(self, yaml_str: str):
+    def delete_yaml(self, yaml_str: str):
         """
-        Deploy a yaml file
+        Delete the Deployment, ConfigMap or Service a manifest describes
 
         Args:
-            yaml_str: The yaml file to deploy
+            yaml_str: The manifest
 
         """
-        assert yaml_str is not None
-        assert yaml_str != ""
+        body = self._load_manifest(yaml_str)
+        _, delete, kind = self._manifest_calls(body)
+        name = body["metadata"]["name"]
+        try:
+            return delete(name=name, namespace=body["metadata"]["namespace"])
+        except ApiException as e:
+            raise OrchestratorException(message=f"Error while deleting {kind} {name}", explanation=str(e))
 
-        # Load the yaml file
+    @staticmethod
+    def _load_manifest(yaml_str: str) -> dict:
         try:
             body = yaml.safe_load(yaml_str)
         except yaml.YAMLError as e:
+            raise OrchestratorException(message="Error while loading yaml file", explanation=str(e))
+        if not isinstance(body, dict):
+            raise OrchestratorException(message="Error while loading yaml file", explanation="It holds no manifest")
+        return body
+
+    def _manifest_calls(self, body: dict) -> Tuple[Callable[..., Any], Callable[..., Any], str]:
+        """Return the create and delete calls of the API for the kind of a manifest, and the kind"""
+        kind = body.get("kind")
+        calls = {
+            "Deployment": (self.api_client.create_namespaced_deployment, self.api_client.delete_namespaced_deployment),
+            "ConfigMap": (self.kube_client.create_namespaced_config_map, self.kube_client.delete_namespaced_config_map),
+            "Service": (self.kube_client.create_namespaced_service, self.kube_client.delete_namespaced_service),
+        }
+        if kind not in calls:
             raise OrchestratorException(
-                message="Error while loading yaml file",
-                explanation=str(e),
+                message=f"Cannot deploy manifests of kind {kind}",
+                explanation=f"Supported kinds are {', '.join(calls)}",
             )
-        assert body is not None
-
-        try:
-            # Deploy the yaml file
-            response = self.kube_client.create_namespaced_config_map(
-                body=body,
-                namespace=body["metadata"]["namespace"],
-            )
-        except ApiException as e:
-            if "already exists" not in str(e):
-                raise OrchestratorException(
-                    message="Error while deploying configmap",
-                    explanation=str(e),
-                )
-            logger.warning(
-                f"ConfigMap {body['metadata']['name']} already exists in namespace {body['metadata']['namespace']}. Trying to delete it and create it again."
-            )
-            try:
-                self.kube_client.delete_namespaced_config_map(
-                    name=body["metadata"]["name"],
-                    namespace=body["metadata"]["namespace"],
-                )
-                response = self.kube_client.create_namespaced_config_map(
-                    body=body,
-                    namespace=body["metadata"]["namespace"],
-                )
-                logger.info(
-                    f"ConfigMap {body['metadata']['name']} in namespace {body['metadata']['namespace']} has been deleted and created again successfully"
-                )
-            except ApiException as e:
-                raise OrchestratorException(
-                    message="Error while deploying configmap",
-                    explanation=str(e),
-                )
-        return response
-
-    def deploy_service_yaml(self, yaml_str: str):
-        """
-        Deploy a yaml file
-
-        Args:
-            yaml_str: The yaml file to deploy
-
-        """
-        assert yaml_str is not None
-        assert yaml_str != ""
-
-        # Load the yaml file
-        try:
-            body = yaml.safe_load(yaml_str)
-        except yaml.YAMLError as e:
-            raise OrchestratorException(
-                message="Error while loading yaml file",
-                explanation=str(e),
-            )
-        assert body is not None
-
-        # Deploy the yaml file
-        try:
-            response = self.kube_client.create_namespaced_service(
-                body=body,
-                namespace=body["metadata"]["namespace"],
-            )
-        except ApiException as e:
-            if "already exists" not in str(e):
-                raise OrchestratorException(
-                    message="Error while deploying service",
-                    explanation=str(e),
-                )
-            logger.warning(
-                f"Service {body['metadata']['name']} already exists in namespace {body['metadata']['namespace']}. Trying to delete it and create it again."
-            )
-            try:
-                self.kube_client.delete_namespaced_service(
-                    name=body["metadata"]["name"],
-                    namespace=body["metadata"]["namespace"],
-                )
-                response = self.kube_client.create_namespaced_service(
-                    body=body,
-                    namespace=body["metadata"]["namespace"],
-                )
-                logger.info(
-                    f"Service {body['metadata']['name']} in namespace {body['metadata']['namespace']} has been deleted and created again successfully"
-                )
-            except ApiException as e:
-                raise OrchestratorException(
-                    message="Error while deploying service",
-                    explanation=str(e),
-                )
-
-        return response
-
-    def delete_deployment_yaml(self, yaml_str: str):
-        """
-        Delete a yaml file
-
-        Args:
-            yaml_str: The yaml file to delete
-
-        """
-        assert yaml_str is not None
-        assert yaml_str != ""
-
-        # Load the yaml file
-        try:
-            body = yaml.safe_load(yaml_str)
-        except yaml.YAMLError as e:
-            raise OrchestratorException(
-                message="Error while loading yaml file",
-                explanation=str(e),
-            )
-        assert body is not None
-
-        # Delete the yaml file
-        try:
-            response = self.api_client.delete_namespaced_deployment(
-                name=body["metadata"]["name"],
-                namespace=body["metadata"]["namespace"],
-            )
-        except ApiException as e:
-            raise OrchestratorException(
-                message="Error while deleting deployment",
-                explanation=str(e),
-            )
-
-        return response
-
-    def delete_configmap_yaml(self, yaml_str: str):
-        """
-        Delete a yaml file
-
-        Args:
-            yaml_str: The yaml file to delete
-
-        """
-        assert yaml_str is not None
-        assert yaml_str != ""
-
-        # Load the yaml file
-        try:
-            body = yaml.safe_load(yaml_str)
-        except yaml.YAMLError as e:
-            raise OrchestratorException(
-                message="Error while loading yaml file",
-                explanation=str(e),
-            )
-        assert body is not None
-
-        # Delete the yaml file
-        try:
-            response = self.kube_client.delete_namespaced_config_map(
-                name=body["metadata"]["name"],
-                namespace=body["metadata"]["namespace"],
-            )
-        except ApiException as e:
-            raise OrchestratorException(
-                message="Error while deleting configmap",
-                explanation=str(e),
-            )
-
-        return response
-
-    def delete_service_yaml(self, yaml_str: str):
-        """
-        Delete a yaml file
-
-        Args:
-            yaml_str: The yaml file to delete
-
-        """
-        assert yaml_str is not None
-        assert yaml_str != ""
-
-        # Load the yaml file
-        try:
-            body = yaml.safe_load(yaml_str)
-        except yaml.YAMLError as e:
-            raise OrchestratorException(
-                message="Error while loading yaml file",
-                explanation=str(e),
-            )
-        assert body is not None
-
-        # Delete the yaml file
-        try:
-            response = self.kube_client.delete_namespaced_service(
-                name=body["metadata"]["name"],
-                namespace=body["metadata"]["namespace"],
-            )
-        except ApiException as e:
-            raise OrchestratorException(
-                message="Error while deleting service",
-                explanation=str(e),
-            )
-
-        return response
+        create, delete = calls[kind]
+        return create, delete, kind

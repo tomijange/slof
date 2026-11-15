@@ -2,13 +2,11 @@
 
 import logging
 
-from kubernetes.client.exceptions import ApiException
 from pydantic import Field, field_validator
 
-from oxn.common.errors import OrchestratorException
+from oxn.common.errors import OxnException
 from oxn.models.treatment import CompileTimeTreatment
 from oxn.models.treatment_params import TreatmentParams
-from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +28,7 @@ class HeadSamplingParams(TreatmentParams):
         return value
 
 
-class KubernetesProbabilisticHeadSamplingTreatment(CompileTimeTreatment[HeadSamplingParams]):
+class ProbabilisticHeadSamplingTreatment(CompileTimeTreatment[HeadSamplingParams]):
     """
     Treatment to change the global sampling rate for head-based trace sampling in the OpenTelemetry collector
 
@@ -44,41 +42,15 @@ class KubernetesProbabilisticHeadSamplingTreatment(CompileTimeTreatment[HeadSamp
     Params = HeadSamplingParams
 
     def preconditions(self) -> bool:
-        """Check that the config exists at the specified location and that Prometheus is running"""
-        assert isinstance(self.orchestrator, KubernetesOrchestrator)
-        configmap_name = "otel-collector"
-
+        """Check that the collector configuration can be read"""
         try:
-            configmap = self.orchestrator.kube_client.read_namespaced_config_map(
-                name=configmap_name, namespace="system-under-evaluation"
-            )
-        except ApiException as e:
-            raise OrchestratorException(
-                message=f"Error while reading ConfigMap {configmap_name} in namespace system-under-evaluation: {e.body}",
-                explanation=str(e),
-            )
-
-        self.deployment = self.orchestrator.get_deployment(
-            "system-under-evaluation", "app.kubernetes.io/name", "opentelemetry-collector"
-        )
-
-        if not configmap:
-            self.messages.append(f"ConfigMap {configmap_name} not found in namespace system-under-evaluation")
+            self.orchestrator.get_otel_collector_probabilistic_sampling_values()
+        except OxnException as e:
+            self.messages.append(str(e.message))
             return False
-
-        if self.deployment is None:
-            self.messages.append("Deployment otelcol not found in namespace system-under-evaluation")
-            return False
-
         return True
 
     def inject(self) -> None:
-        assert isinstance(self.orchestrator, KubernetesOrchestrator)
-
-        self.deployment = self.orchestrator.get_deployment(
-            "system-under-evaluation", "app.kubernetes.io/name", "opentelemetry-collector"
-        )
-
         self.initial_sampling_percentage, self.initial_hash_seed = (
             self.orchestrator.get_otel_collector_probabilistic_sampling_values()
         )
@@ -89,21 +61,9 @@ class KubernetesProbabilisticHeadSamplingTreatment(CompileTimeTreatment[HeadSamp
             f"Set otel collectors probabilistic sampling rate {self.initial_sampling_percentage} -> {self.params.sampling_percentage} and hash seed {self.initial_hash_seed} -> {self.params.hash_seed}"
         )
 
-        # TODO: it seams as there might be a way to reload config maps without restarting the pods in some cases. This should be investigated (https://kubernetes.io/docs/concepts/configuration/configmap/#mounted-configmaps-are-updated-automatically)
-        self.orchestrator.restart_pods_of_deployment(self.deployment)
-
     def clean(self) -> None:
-        assert self.initial_sampling_percentage
-        assert self.initial_hash_seed
-        assert isinstance(self.orchestrator, KubernetesOrchestrator)
-
-        """  self.orchestrator.set_otel_collector_probabilistic_sampling_values(sampling_percentage=self.initial_sampling_percentage, hash_seed=self.initial_hash_seed)
-        logger.info(f"Reset otel collectors probabilistic sampling rate  {self.params.sampling_percentage} -> {self.initial_sampling_percentage} and hash seed to {self.params.hash_seed} -> {self.initial_hash_seed}")
-
-         # TODO: it seams as there might be a way to reload config maps without restarting the pods in some cases. This should be investigated (https://kubernetes.io/docs/concepts/configuration/configmap/#mounted-configmaps-are-updated-automatically)
-        self.orchestrator.restart_pods_of_deployment(self.deployment) """
-
+        # The sampling rate stays in place, resetting it would restart the collector again. To reset it:
+        # self.orchestrator.set_otel_collector_probabilistic_sampling_values(
+        #     sampling_percentage=self.initial_sampling_percentage, hash_seed=self.initial_hash_seed
+        # )
         return
-
-    def _validate_orchestrator(self) -> bool:
-        return self._orchestrator_is_one_of(["kubernetes"])

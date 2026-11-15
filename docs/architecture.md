@@ -8,14 +8,14 @@
 |---|---|
 | `oxn/cli/` | `main.py` (entry point), `argparser.py`, `installer.py` (`oxn setup`) |
 | `oxn/core/` | `engine.py`, `runner.py`, `validation.py`, `context.py` |
-| `oxn/treatments/` | `runtime/` and `compile_time/`, one module per treatment, and `registry.py`, which maps actions to treatment classes |
-| `oxn/orchestration/` | `kubernetes_orchestrator.py`, `deployment.py`, `cluster_proxy.py` |
+| `oxn/treatments/` | `runtime/` and `compile_time/`, one module per treatment, `registry.py`, which maps actions to treatment classes, and `kubernetes.py`, the base class of Kubernetes-only treatments |
+| `oxn/orchestration/` | `kubernetes_orchestrator.py`, `kubernetes_objects.py`, `deployment.py`, `cluster_proxy.py` |
 | `oxn/loadgen/` | `locust_kubernetes.py`, `file_load_generator.py` |
 | `oxn/observability/` | `prometheus.py`, `jaeger.py`, `observer.py`, `responses.py` |
 | `oxn/reporting/` | `report.py`, `store.py` |
 | `oxn/common/` | `errors.py`, `utils.py`, `settings.py`, `log.py` |
-| `oxn/models/` | `experiment_spec.py` (typed model of an experiment spec), `treatment_params.py` (base classes of treatment params) and base classes for orchestrators, load generators, treatments and responses |
-| `oxn/steering/` | Sidecar container and controller that apply network treatments inside pods |
+| `oxn/models/` | `experiment_spec.py` (typed model of an experiment spec), `treatment_params.py` (base classes of treatment params), `orchestrator.py` (the orchestrator interface), `workload.py` (the workloads it acts on) and base classes for load generators, treatments and responses |
+| `oxn/steering/` | Sidecar container and controller that apply network faults inside pods, Kubernetes only |
 
 ## Startup
 
@@ -38,6 +38,24 @@
 8. **Tear down.** `deployment.py` removes the stack, unless `--keep-sue` is set.
 
 After the last run, the report is written to the `--report` directory.
+
+## Orchestrators
+
+The engine, load generators, observability clients and treatments use the SUE through the `Orchestrator` interface in `models/orchestrator.py`. Besides deploying the SUE and finding addresses, it covers everything the treatments do:
+
+| Group | Methods |
+|---|---|
+| Lifecycle | `orchestrate`, `ready`, `teardown` |
+| Addresses | `get_address_for_service`, `get_prometheus_address`, `get_jaeger_address` |
+| Workloads | `get_instances`, `kill_instance`, `get_replicas`, `scale`, `restart`, `is_ready`, `get_environment_variable`, `set_environment_variable` |
+| Network faults | `prepare_network_faults`, `set_network_delay`, `set_network_loss`, `set_network_corruption`, `remove_network_faults` |
+| Telemetry configuration | Get and set the global scrape values of the SUE's Prometheus and the collector's probabilistic sampler. Setting restarts the component |
+
+Workloads are addressed with a `WorkloadSelector` from `models/workload.py`: a namespace and a label with its value, as in the `namespace`, `label_selector` and `label` params of a treatment. A `WorkloadInstance` is one running copy.
+
+`KubernetesOrchestrator` is the only implementation. A workload is a deployment and an instance is a pod. The scrape values and the sampler are written to the `prometheus` and `otel-collector` ConfigMaps in `system-under-evaluation`. Network faults go through the steering sidecar: `prepare_network_faults` adds the container from `steering/steering_container.py` to the deployment with `SteeringController`, which then sends the pods `tc netem` commands through the API server proxy. Its methods that take `V1Deployment` and `V1Pod` objects, such as `get_deployment` and `apply_security_context_to_deployment`, are for Kubernetes-only code, and `deploy_yaml` and `delete_yaml` create and delete the Locust manifests.
+
+Treatments built on `KubernetesTreatment` from `treatments/kubernetes.py` reject other orchestrators when the runner builds them. Of the built-in ones, these are `empty_kubernetes` and `security_context_kubernetes`. `LocustKubernetesLoadgenerator` needs a `KubernetesOrchestrator` too, and `Prometheus` and `Jaeger` use its API server proxy when they get one.
 
 ## Phases and cleanup
 

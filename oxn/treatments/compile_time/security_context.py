@@ -7,7 +7,7 @@ from pydantic import Field
 
 from oxn.models.treatment import CompileTimeTreatment
 from oxn.models.treatment_params import PodSelectorParams, TreatmentParams
-from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
+from oxn.treatments.kubernetes import KubernetesTreatment
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +26,13 @@ class SecurityContextParams(PodSelectorParams):
     """Applied to every container of the deployment"""
 
 
-class KubernetesApplySecurityContextTreatment(CompileTimeTreatment[SecurityContextParams]):
+class KubernetesApplySecurityContextTreatment(
+    KubernetesTreatment[SecurityContextParams], CompileTimeTreatment[SecurityContextParams]
+):
     """
     Treatment to escalate the privileges of a service account in a Kubernetes cluster
+
+    Kubernetes only, it patches the security context in the pod template of a deployment.
     """
 
     action = "security_context_kubernetes"
@@ -40,12 +44,11 @@ class KubernetesApplySecurityContextTreatment(CompileTimeTreatment[SecurityConte
         namespace = self.params.namespace
         label_selector = self.params.label_selector
         label = self.params.label
-        assert isinstance(self.orchestrator, KubernetesOrchestrator)
 
         # capabilities should now be the opisite of what was applied in inject (e.g. inject was { add: ["NET_ADMIN"] } so clean should be { remove: ["NET_ADMIN"] })
         capabilities = {"add": []}
 
-        error_code, error = self.orchestrator.apply_security_context_to_deployment(
+        error_code, error = self.kubernetes.apply_security_context_to_deployment(
             namespace=namespace, label_selector=label_selector, label=label, capabilities=capabilities
         )
 
@@ -59,8 +62,7 @@ class KubernetesApplySecurityContextTreatment(CompileTimeTreatment[SecurityConte
         namespace = self.params.namespace
         label_selector = self.params.label_selector
         label = self.params.label
-        assert isinstance(self.orchestrator, KubernetesOrchestrator)
-        error_code, error = self.orchestrator.apply_security_context_to_deployment(
+        error_code, error = self.kubernetes.apply_security_context_to_deployment(
             namespace=namespace, label_selector=label_selector, label=label, capabilities=capabilities
         )
         logger.info(
@@ -69,10 +71,4 @@ class KubernetesApplySecurityContextTreatment(CompileTimeTreatment[SecurityConte
         # TODO: check if the deployment was actually updated and if so, wait for the deployment to be ready
 
     def preconditions(self) -> bool:
-        return True
-
-    def _validate_orchestrator(self) -> bool:
-        if self.orchestrator.get_orchestrator_type() != "kubernetes":
-            self.messages.append(f"{self.name} treatment is only supported for Kubernetes orchestrators")
-            return False
         return True

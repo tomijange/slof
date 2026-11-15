@@ -24,6 +24,7 @@ SLOF builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legler. Th
 17-lint-and-format
 18-formatting-and-type-fixes
 19-treatment-params
+20-orchestrator-interface
 ```
 
 ## In order
@@ -49,6 +50,7 @@ SLOF builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legler. Th
 | 17 | [Linting, formatting and type checking](17-lint-and-format.md) | Ruff for Python, yamllint for YAML, ty for type hints, `make lint`, `make format` and a Lint workflow. No `.vscode/` folder |
 | 18 | [Formatting and type fixes](18-formatting-and-type-fixes.md) | `make lint` passes: code formatted with Ruff and free of Ruff, ty and yamllint findings. Base classes match their subclasses, `kubernetes_corrupt` works, two unused load generators removed. `make hooks` installs a pre-commit hook for `make lint` |
 | 19 | [Typed treatment params](19-treatment-params.md) | Treatment params are pydantic models, checked while the spec is parsed and before the deploy. Unknown actions and params stop the run. `TreatmentRegistry` replaces `treatment_keys` |
+| 20 | [Orchestrator interface](20-orchestrator-interface.md) | Treatments use a generic `Orchestrator` interface with `WorkloadSelector`s, so Compose can come back as another implementation. Only `empty_kubernetes` and `security_context_kubernetes` need Kubernetes. The steering sidecar lives in `oxn/steering/`. Treatment classes lose the `Kubernetes` prefix, actions stay. `KubernetesOrchestrator` loses its unused methods and asserts, `deploy_yaml` and `delete_yaml` replace six manifest methods |
 
 ## GOXN and now
 
@@ -60,12 +62,12 @@ What differs from GOXN today, by area. "Changed in" points to the change pages, 
 | Code layout | About 25 modules side by side in `oxn/` | Packages by responsibility, one module per treatment | [1](01-package-layout.md#packages), [16](16-refactorings.md#treatment-modules) | [Architecture](../architecture.md#packages) |
 | Spec format | `schema` validation, unknown keys ignored, `sue.compose` required | Typed pydantic model, unknown keys rejected, no `compose` | [2](02-typed-specs.md#the-spec-model), [12](12-remove-docker-compose.md#spec) | [Experiments](../experiments.md#spec-structure) |
 | Treatment params | Checked by each treatment after the deploy, unknown params ignored | A pydantic model per treatment, checked while the spec is parsed | [19](19-treatment-params.md#checked-while-the-spec-is-parsed) | [Experiments](../experiments.md#parameters) |
-| Orchestrators | `kubernetes`, with no-op deploy and teardown, and `docker-compose` | `kubernetes`, which deploys and tears down the spec's stack | [3](03-deployment-section.md#what-deploy-and-teardown-do), [12](12-remove-docker-compose.md#orchestrator) | [Deployments](../deployments.md), [Architecture](../architecture.md#one-experiment-run) |
+| Orchestrators | `kubernetes`, with no-op deploy and teardown, and `docker-compose` | `kubernetes`, which deploys and tears down the spec's stack, behind an `Orchestrator` interface that covers everything treatments do | [3](03-deployment-section.md#what-deploy-and-teardown-do), [12](12-remove-docker-compose.md#orchestrator), [20](20-orchestrator-interface.md#the-orchestrator-interface) | [Deployments](../deployments.md), [Architecture](../architecture.md#orchestrators) |
 | SUE lifecycle | `run_experiment_suite.sh` runs `helm` by hand | A `deployment` section in every spec, `oxn deploy` and `oxn teardown` | [3](03-deployment-section.md#what-deploy-and-teardown-do), [11](11-current-stack-specs.md#deployment-sections) | [Deployments](../deployments.md#shipped-setups) |
 | Run order on Kubernetes | Compile-time treatments, then deploy | Deploy, then compile-time treatments | [3](03-deployment-section.md#changed-run-order-on-kubernetes) | [Architecture](../architecture.md#one-experiment-run) |
 | Cluster access | Direct HTTP to pod and cluster IPs, `oxn` inside the cluster network | Kubernetes API server proxy | [4](04-api-server-proxy.md#the-cluster-proxy) | [Deployments](../deployments.md#reaching-the-cluster-network) |
 | Cluster setup | `setup/*.sh` and README commands | `oxn setup`, no `setup/` folder | [5](05-oxn-setup.md#the-command), [14](14-remove-setup-scripts.md#setup-scripts) | [Getting started](../getting-started.md#prepare-the-cluster) |
-| Treatments | Kubernetes and Docker-only treatments, `is_runtime()` per class, `treatment_keys` | Kubernetes treatments only, in a runtime and a compile-time package, `TreatmentRegistry` | [12](12-remove-docker-compose.md#treatments), [16](16-refactorings.md#treatment-modules), [19](19-treatment-params.md#treatment-registry) | [Experiments](../experiments.md#treatments) |
+| Treatments | Kubernetes and Docker-only treatments, `is_runtime()` per class, `treatment_keys`, Kubernetes objects in every Kubernetes treatment | No Docker-only treatments, a runtime and a compile-time package, `TreatmentRegistry`. All but two use only the `Orchestrator` interface | [12](12-remove-docker-compose.md#treatments), [16](16-refactorings.md#treatment-modules), [19](19-treatment-params.md#treatment-registry), [20](20-orchestrator-interface.md#treatments) | [Experiments](../experiments.md#treatments) |
 | Cleanup after an error or ctrl-c | Two flags, a failed or interrupted deployment is left behind | `Engine.phase`, every phase from deployment to teardown is cleaned up | [16](16-refactorings.md#engine-phases) | [Architecture](../architecture.md#phases-and-cleanup) |
 | Experiment key in reports | `e3b0c442` for every spec | Hash of the spec path | [16](16-refactorings.md#experiment-key) | [Experiments](../experiments.md#results) |
 | Missing data | A response without data aborts the run | It is skipped with a warning | [6](06-skip-missing-responses.md#skipping-responses-without-data) | [Experiments](../experiments.md#results) |
@@ -89,6 +91,7 @@ What the changes so far leave open:
 | Ruff selects only a small set of rules, and `evaluation/` is not type checked. | [17](17-lint-and-format.md#known-limitations) |
 | After an error or ctrl-c, in-cluster Locust pods and treatments are only removed with the SUE, so they stay with `--keep-sue`. | [16](16-refactorings.md#known-limitations) |
 | Treatment preconditions, such as whether the target deployment exists, are only checked after the deploy. | [19](19-treatment-params.md#known-limitations) |
+| Kubernetes is the only implementation of the `Orchestrator` interface, and the SUE namespace and ConfigMap names are constants in it. | [20](20-orchestrator-interface.md#known-limitations) |
 
 ## Writing a change page
 

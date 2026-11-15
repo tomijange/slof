@@ -18,14 +18,6 @@ class KubernetesOrchestrationTest(unittest.TestCase):
     def tearDown(self) -> None:
         pass
 
-    def test_it_reads_all_pods(self):
-        self.assertTrue(self.orc.list_of_all_pods)
-        self.assertGreaterEqual(len(self.orc.list_of_all_pods.items), 0)
-
-    def test_it_reads_all_services(self):
-        self.assertTrue(self.orc.list_of_all_services)
-        self.assertGreaterEqual(len(self.orc.list_of_all_services.items), 0)
-
     def test_it_initializes_the_client(self):
         self.assertTrue(self.orc.kube_client)
 

@@ -14,7 +14,6 @@ from oxn.common.errors import LocustException
 from oxn.models.experiment_spec import ExperimentSpec
 from oxn.models.load_generator import BaseLoadGenerator
 from oxn.models.orchestrator import Orchestrator
-from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +51,6 @@ class LocustFileLoadgenerator(BaseLoadGenerator):
         self.port = 8080
 
         if self.target:
-            assert isinstance(self.orchestrator, KubernetesOrchestrator), (
-                "Orchestrator must be KubernetesOrchestrator if target is specified"
-            )
             self.base_address = self.orchestrator.get_address_for_service(
                 name=self.target.name, namespace=self.target.namespace
             )

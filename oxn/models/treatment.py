@@ -151,16 +151,15 @@ class Treatment(abc.ABC, Generic[P]):
         """
         return True
 
-    @abc.abstractmethod
     def _validate_orchestrator(self) -> bool:
         """
-        Validate if the orchestrator is suitable for this treatment.
-        This method should return true if the orchestrator is valid, false otherwise.
-        """
+        Return true if the orchestrator is suitable for this treatment
 
-    def _orchestrator_is_one_of(self, valid_for: List[str]) -> bool:
-        """Return true if the type of the orchestrator is in valid_for"""
-        return self.orchestrator.get_orchestrator_type() in valid_for
+        Treatments that only use the methods of oxn.models.orchestrator.Orchestrator work with every orchestrator,
+        which is the default. A treatment that needs more overrides this and explains why in self.messages, see
+        oxn.treatments.kubernetes.KubernetesTreatment.
+        """
+        return True
 
 
 class RuntimeTreatment(Treatment[P], abc.ABC):
