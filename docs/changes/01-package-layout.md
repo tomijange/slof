@@ -26,7 +26,7 @@ GOXN kept about 25 modules at the top level of `oxn/`, with relative imports. Th
 | `oxn/reporting/` | `report.py`, `store.py`, `pricing.py` |
 | `oxn/common/` | `errors.py`, `log.py`, `settings.py`, `utils.py` |
 
-`docker_orchestration.py` and `pricing.py` were removed later, see [Removal of Docker Compose support](12-remove-docker-compose.md).
+`docker_orchestration.py` and `pricing.py` were removed later, see [Removal of Docker Compose support](12-remove-docker-compose.md). `treatments.py` was split into the `oxn/treatments/` package later, see [Refactorings](16-refactorings.md#treatment-modules).
 
 `oxn/models/` and `oxn/steering/` stay where they were. Modules added by later changes go into these packages: `cli/installer.py` ([`oxn setup`](05-oxn-setup.md)), `orchestration/deployment.py` ([A deployment section in the spec](03-deployment-section.md)) and `orchestration/cluster_proxy.py` ([Reaching the cluster through the API server proxy](04-api-server-proxy.md)).
 

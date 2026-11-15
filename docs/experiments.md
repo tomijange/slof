@@ -82,21 +82,23 @@ experiment:
 
 ## Treatments
 
+A treatment is either compile-time or runtime. Compile-time treatments change the SUE's configuration after it is deployed and before the load starts, which restarts the affected pods. They stay in place until the runtime treatments end. Runtime treatments run one after another while the load runs.
+
 These treatments are used by the shipped specs:
 
-| Action | Effect | Parameters |
-|---|---|---|
-| `empty` | Changes nothing and waits, as a baseline | `duration` |
-| `kube_probl` | Sets the collector's probabilistic sampling rate | `sampling_percentage`, `hash_seed` |
-| `kubernetes_otel_metrics_interval` | Sets a service's OpenTelemetry metrics export interval | `namespace`, `label_selector`, `label`, `interval` |
-| `kubernetes_prometheus_interval` | Sets the Prometheus scrape interval | `interval`, `evaluation_interval`, `scrape_timeout` |
-| `delay` | Adds network latency to matching pods | `namespace`, `label_selector`, `label`, `delay_time`, `delay_jitter`, `duration`, `interface` |
+| Action | Kind | Effect | Parameters |
+|---|---|---|---|
+| `empty` | Runtime | Changes nothing and waits, as a baseline | `duration` |
+| `kube_probl` | Compile-time | Sets the collector's probabilistic sampling rate | `sampling_percentage`, `hash_seed` |
+| `kubernetes_otel_metrics_interval` | Compile-time | Sets a service's OpenTelemetry metrics export interval | `namespace`, `label_selector`, `label`, `interval` |
+| `kubernetes_prometheus_interval` | Compile-time | Sets the Prometheus scrape interval | `interval`, `evaluation_interval`, `scrape_timeout` |
+| `delay` | Runtime | Adds network latency to matching pods | `namespace`, `label_selector`, `label`, `delay_time`, `delay_jitter`, `duration`, `interface` |
 
-`treatment_keys` in `oxn/core/runner.py` lists every registered action. The treatment classes in `oxn/core/treatments.py` define their parameters.
+`treatment_keys` in `oxn/core/runner.py` lists every registered action. The treatment classes in `oxn/treatments/runtime/` and `oxn/treatments/compile_time/` define their parameters, one module per treatment. A treatment loaded with `--extend` subclasses `RuntimeTreatment` or `CompileTimeTreatment` from `oxn/models/treatment.py`.
 
 ## Results
 
-- **Report:** `reports/report_<timestamp>.yaml` holds, for each run, how every treatment and response interact, including the statistical test results, along with the load generation statistics.
+- **Report:** `reports/report_<timestamp>.yaml` holds, for each run, how every treatment and response interact, including the statistical test results, along with the load generation statistics. Its `experiment_key` is the first eight hex digits of the SHA-256 of the spec path as given to `oxn`, so all runs of one spec share it.
 - **Response data:** `store.h5` in the working directory holds the recorded data as dataframes.
 
 Both are ignored by git.

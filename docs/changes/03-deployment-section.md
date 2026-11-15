@@ -75,7 +75,7 @@ With the section in the spec, the spec alone says what an experiment runs on. Ev
 
 - **Compile-time treatments.** On Kubernetes they patch the running SUE and restart its pods, so the SUE has to exist first. With Docker Compose they change what gets built, so they still run before `orchestrate()`. Docker Compose is gone since [Removal of Docker Compose support](12-remove-docker-compose.md), so they now always run after it.
 - **Load generator.** `LocustKubernetesLoadgenerator` resolves the address of its target when it is created, so it has to wait until after deployment.
-- **Failures.** If deployment fails, the engine cleans up compile-time treatments and tears the SUE down before it re-raises, unless `--keep-sue` is set. Once deployment has succeeded, `main()` handles the teardown.
+- **Failures.** If deployment fails, the engine cleans up compile-time treatments and tears the SUE down before it re-raises, unless `--keep-sue` is set. Once deployment has succeeded, `main()` handles the teardown. Since [Refactorings](16-refactorings.md#engine-phases), `Engine.teardown()` handles every teardown, also of a failed or interrupted deployment.
 
 ## Removed scripts
 

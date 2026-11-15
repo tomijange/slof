@@ -18,7 +18,7 @@
 9. **Observation**: 
 * `engine.py` and `observer.py` work together to monitor and record response variables using `responses.py` and API interactions with Prometheus and Jaeger. 
 10. **Treatments**: 
-* `runner.py` manages the application of treatments from `treatments.py` during the experiment run. 
+* `runner.py` manages the application of treatments from `treatments/compile_time/` and `treatments/runtime/` during the experiment run. 
 11. **Data Storage**: 
 * Experiment data is stored and retrieved using `store.py` for persistent storage. 
 12. **Reporting**: 

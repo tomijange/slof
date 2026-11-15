@@ -7,6 +7,7 @@ Connection: Central component that coordinates between treatments, load generati
 
 import logging
 import time
+from enum import Enum
 from typing import Optional
 
 import yaml
@@ -27,6 +28,39 @@ from oxn.models.experiment_spec import ExperimentSpec
 logger = logging.getLogger(__name__)
 
 
+class Phase(Enum):
+    """
+    The step of an experiment run the engine is in
+
+    main() reads the phase after the run ends or fails to decide what to clean up.
+    """
+
+    INITIALIZATION = "initialization"
+    """Nothing is deployed yet"""
+    ORCHESTRATION = "orchestration"
+    """The SUE is being deployed"""
+    PREPARATION = "preparation"
+    """Compile-time treatments, readiness and precondition checks on the deployed SUE"""
+    LOAD = "load"
+    """The load generator is starting or running, runtime treatments run and responses are observed"""
+    REPORTING = "reporting"
+    """The load generator has stopped, responses are stored and reported"""
+    TEARDOWN = "teardown"
+    """The SUE is being removed"""
+    COMPLETED = "completed"
+    """The run is done, the SUE is removed unless --keep-sue is set"""
+
+    @property
+    def sue_deployed(self) -> bool:
+        """Whether the SUE may be deployed, fully or in part, in this phase"""
+        return self not in (Phase.INITIALIZATION, Phase.COMPLETED)
+
+    @property
+    def loadgen_running(self) -> bool:
+        """Whether the load generator may be running in this phase"""
+        return self is Phase.LOAD
+
+
 class Engine:
     """
     Observability experiments engine
@@ -34,7 +68,7 @@ class Engine:
     This class encapsulates all behavior needed to execute observability experiments.
     """
 
-    def __init__(self, configuration_path=None, report_path=None, treatment_file=None):
+    def __init__(self, configuration_path=None, report_path=None, treatment_file=None, keep_sue=False):
         assert configuration_path is not None, "Configuration path must be specified"
         self.config = configuration_path
         """The path to the configuration file for this engine"""
@@ -55,10 +89,14 @@ class Engine:
         """A reference to a load generator instance"""
         self.runner = None
         """A reference to a runner instance"""
-        self.loadgen_running = False
-        """Status of the load generator"""
-        self.sue_running = False
-        """Status of the sue"""
+        self.phase = Phase.INITIALIZATION
+        """The step of the current run, see Phase"""
+        self.keep_sue = keep_sue
+        """Whether teardown() leaves the SUE deployed"""
+
+    def _enter(self, phase: Phase):
+        logger.debug(f"Entering phase {phase.value}")
+        self.phase = phase
 
     def load_experiment_specification(self):
         """Read the experiment specification file and validate it syntactically"""
@@ -70,7 +108,6 @@ class Engine:
         runs=None,
         orchestration_timeout=None,
         randomize=False,
-        keep_sue=False,
     ):
         """Run an experiment n times"""
         assert runs is not None, "Number of runs must be specified"
@@ -90,14 +127,10 @@ class Engine:
                 orchestrator=self.orchestrator,
             )
             logger.info(f"Run id is {self.runner.short_id}")
-            try:
-                self.orchestrator.orchestrate()
-            except OxnException:
-                if not keep_sue:
-                    self.orchestrator.teardown()
-                raise
-            # from here on main() tears down the SUE if anything goes wrong
-            self.sue_running = True
+            # from here on main() tears down the SUE if anything goes wrong, even a partial deploy
+            self._enter(Phase.ORCHESTRATION)
+            self.orchestrator.orchestrate()
+            self._enter(Phase.PREPARATION)
             # compile-time treatments patch the deployed SUE, so they run after orchestration
             self.runner.execute_compile_time_treatments()
             if not self.orchestrator.ready(expected_services=None, timeout=orchestration_timeout):
@@ -116,9 +149,10 @@ class Engine:
                         message=f"Error while checking preconditions for treatment {treatment.name} which is class {treatment.__class__}",
                         explanation="\n".join(treatment.messages),
                     )
+            # entered before start(), so main() also kills a generator that fails or is interrupted while starting
+            self._enter(Phase.LOAD)
             self.generator.start()
             logger.info("Started load generation")
-            self.loadgen_running = True
             experiment_start = utc_timestamp()
             self.runner.experiment_start = experiment_start
             self.runner.observer.experiment_start = experiment_start
@@ -128,7 +162,7 @@ class Engine:
             self.runner.observer.experiment_end = self.runner.experiment_end
             self.runner.observe_response_variables()
             self.generator.stop()
-            self.loadgen_running = False
+            self._enter(Phase.REPORTING)
             logger.info("Stopped load generation")
             for _, response in self.runner.observer.variables().items():
                 if response.data is None:
@@ -162,10 +196,27 @@ class Engine:
                     else:
                         self.reporter.add_loadgen_data_kubernetes_locust(self.generator, self.runner)
                     logger.debug("Added load generation data")
-            if not keep_sue:
-                self.orchestrator.teardown()
-                logger.info("Stopped sue")
-            self.sue_running = False
+            self.teardown()
             logger.info(f"Experiment run {idx + 1} of {runs} completed after {time.monotonic() - run_start:.0f}s")
         if self.report_path:
             self.reporter.dump_report_data()
+
+    def teardown(self):
+        """
+        Clean up what the current phase left running
+
+        Ends every run, and main() calls it after an error or ctrl-c. Kills the load generator if it may
+        still run and removes the SUE if it may be deployed, unless keep_sue is set. If removing the SUE
+        fails, the phase stays at teardown, so calling this again retries it.
+        """
+        if self.phase.loadgen_running:
+            assert self.generator is not None
+            self.generator.kill()
+            logger.info("Shut down load generation")
+        if self.phase.sue_deployed and not self.keep_sue:
+            # TODO: clean up treatments here, they only go away with the SUE
+            assert self.orchestrator is not None
+            self._enter(Phase.TEARDOWN)
+            self.orchestrator.teardown()
+            logger.info("Shut down sue")
+        self._enter(Phase.COMPLETED)

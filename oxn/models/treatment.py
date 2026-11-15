@@ -1,7 +1,8 @@
-""" 
-Purpose: Defines the base class for treatments.
-Functionality: Provides an abstract base class Treatment with methods to be implemented by subclasses.
-Connection: Used as a base class for specific treatment implementations in treatments.py.
+"""
+Purpose: Defines the base classes for treatments.
+Functionality: Provides an abstract base class Treatment with methods to be implemented by subclasses,
+and RuntimeTreatment and CompileTimeTreatment, which decide is_runtime() for them.
+Connection: Used as base classes for the treatment implementations in oxn/treatments/runtime and oxn/treatments/compile_time.
  """
 
 import abc
@@ -28,9 +29,9 @@ class Treatment(abc.ABC):
         """A reference to the orchestrator instance"""
         self.config: dict = config
         """A dictionary containing parameter names and supplied parameter values from the experiment specification"""
-        self.start = None
+        self.start: float | None = None
         """A unix float timestamp in utc indicating when the treatment instance has been started"""
-        self.end = None
+        self.end: float | None = None
         """A unix float timestamp in utc indicating when the treatment instance has finished execution"""
         self.messages = []
         """A list of strings to provide helpful messages to the user in case of any errors"""
@@ -163,3 +164,25 @@ class Treatment(abc.ABC):
         This method should return true if the orchestrator is valid, false otherwise.
         """
         return self.orchestrator.get_orchestrator_type() in valid_for
+
+class RuntimeTreatment(Treatment, abc.ABC):
+    """
+    Base class for runtime treatments
+
+    The runner injects them one after another while the load generator runs, see Treatment.is_runtime.
+    """
+
+    def is_runtime(self) -> bool:
+        return True
+
+
+class CompileTimeTreatment(Treatment, abc.ABC):
+    """
+    Base class for compile-time treatments
+
+    The runner injects them after the SUE is deployed and before the load starts. They change the SUE's
+    configuration, which restarts its pods, and are cleaned after the runtime treatments.
+    """
+
+    def is_runtime(self) -> bool:
+        return False

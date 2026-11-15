@@ -14,6 +14,7 @@ from oxn.models.experiment_spec import ExperimentSpec, MetricResponseDescription
 
 from oxn.observability.responses import MetricResponseVariable, TraceResponseVariable
 from oxn.models.response import ResponseVariable
+from oxn.common.log import log_exception
 from oxn.common.utils import time_string_to_seconds
 
 logger = logging.getLogger(__name__)
@@ -122,7 +123,4 @@ class Observer:
                 variable.observe()
                 logger.info(f"Captured {variable.name} with {len(variable.data)} rows")
             except Exception as e:
-                logger.warning(
-                    f"Failed to capture {variable.name}, proceeding. {e}",
-                    exc_info=logger.isEnabledFor(logging.DEBUG),
-                )
+                log_exception(logger, e, f"Failed to capture {variable.name}, proceeding", level=logging.WARNING)

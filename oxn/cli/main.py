@@ -9,21 +9,13 @@ import sys
 
 from oxn.core.engine import Engine
 from oxn.common.errors import OxnException
-from oxn.common.log import initialize_logging
+from oxn.common.log import initialize_logging, log_exception
 from oxn.core.validation import load_experiment_specification
 from oxn.orchestration.deployment import Deployment
 from oxn.cli.argparser import parse_oxn_args
 from oxn.cli.installer import Installer
 
 logger = logging.getLogger(__name__)
-
-
-def log_exception(exception):
-    """Log an exception with its class name, including the stack trace on the debug level"""
-    logger.error(
-        f"{exception.__class__.__name__}: {exception}",
-        exc_info=logger.isEnabledFor(logging.DEBUG),
-    )
 
 
 def manage_sue(args):
@@ -48,7 +40,7 @@ def main():
         try:
             manage_sue(args)
         except OxnException as e:
-            log_exception(e)
+            log_exception(logger, e)
             sys.exit(1)
         return
     run_experiment(args)
@@ -59,28 +51,23 @@ def run_experiment(args):
         configuration_path=args.spec,
         report_path=args.report,
         treatment_file=args.extend,
+        keep_sue=args.keep_sue,
     )
     try:
         engine.load_experiment_specification()
     except OxnException as e:
-        log_exception(e)
+        log_exception(logger, e)
         sys.exit(1)
     try:
         engine.run(
             runs=args.times,
             orchestration_timeout=args.timeout,
             randomize=args.randomize,
-            keep_sue=args.keep_sue,
         )
     except OxnException as oxn_exception:
-        log_exception(oxn_exception)
+        log_exception(logger, oxn_exception)
+        logger.info(f"Run failed in phase {engine.phase.value}")
     except KeyboardInterrupt:
-        logger.info("Trying to shut down gracefully. Press ctrl-c to force")
+        logger.info(f"Interrupted in phase {engine.phase.value}. Trying to shut down gracefully. Press ctrl-c to force")
     finally:
-        if engine.loadgen_running:
-            engine.generator.kill()
-            logger.info("Shut down load generation")
-        if engine.sue_running and not args.keep_sue:
-            # TODO: call cleanup methods here
-            engine.orchestrator.teardown()
-            logger.info("Shut down sue")
+        engine.teardown()

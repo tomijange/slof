@@ -13,18 +13,20 @@ import datetime
 from typing import List
 
 from oxn.common.errors import OxnException
-from oxn.core.treatments import (
+from oxn.treatments.compile_time import (
     DeploymentScaleTreatment,
-    EmptyKubernetesTreatment,
-    EmptyTreatment,
     KubernetesApplySecurityContextTreatment,
-    KubernetesKillTreatment,
     KubernetesMetricsExportIntervalTreatment,
-    KubernetesNetworkDelayTreatment,
-    KubernetesNetworkPacketLossTreatment,
     KubernetesPrometheusIntervalTreatment,
     KubernetesProbabilisticHeadSamplingTreatment,
+)
+from oxn.treatments.runtime import (
+    EmptyKubernetesTreatment,
+    EmptyTreatment,
     KubernetesCorruptPacketTreatment,
+    KubernetesKillTreatment,
+    KubernetesNetworkDelayTreatment,
+    KubernetesNetworkPacketLossTreatment,
 )
 from oxn.common import utils
 from oxn.observability.observer import Observer
@@ -80,9 +82,9 @@ class ExperimentRunner:
         """Random and unique ID to identify runs"""
         self.treatments = {}  # since python 3.6 dict remembers order of insertion
         """Treatments to execute for this run"""
-        self.experiment_start = None
+        self.experiment_start: float | None = None
         """Experiment start as UTC unix timestamp in seconds"""
-        self.experiment_end = None
+        self.experiment_end: float | None = None
         """Experiment end as UTC unix timestamp in seconds"""
         self.random_treatment_order = random_treatment_order
         """If the treatments should be executed in random order"""
@@ -92,6 +94,8 @@ class ExperimentRunner:
         """Additional user-supplied treatments"""
         self.observer = Observer(orchestrator=self.orchestrator, config=self.config)
         """Observer for response variables"""
+        self.hash: str | None = None
+        """SHA-256 of the spec path, None without one"""
         self._compute_hash()
         """Compute unique identifiers for runs and experiment config"""
         self._extend_treatments()
@@ -108,8 +112,10 @@ class ExperimentRunner:
         return self.id[:8]
 
     @property
-    def short_hash(self) -> str:
+    def short_hash(self) -> str | None:
         """Return the truncated hash for this experiment"""
+        if self.hash is None:
+            return None
         return self.hash[:8]
 
     @property
@@ -125,9 +131,9 @@ class ExperimentRunner:
     def _compute_hash(self) -> None:
         """Hash the config filename to uniquely identify experiments"""
         if self.config_filename:
-            self.hash = self.config_filename.encode("utf-8")
-            self.hash = hashlib.sha256(usedforsecurity=False)
-            self.hash = self.hash.hexdigest()
+            file_name = self.config_filename.encode("utf-8")
+            hash = hashlib.sha256(file_name, usedforsecurity=False)
+            self.hash = hash.hexdigest()
 
     def _build_treatments(self) -> None:
         """Build a representation of treatments defined in config"""

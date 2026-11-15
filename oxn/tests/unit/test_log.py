@@ -1,7 +1,7 @@
 import logging
 import unittest
 
-from oxn.common.log import ConsoleFormatter
+from oxn.common.log import ConsoleFormatter, log_exception
 
 
 def record(level=logging.INFO, message="Deployed helm release"):
@@ -37,3 +37,32 @@ class ConsoleFormatterTest(unittest.TestCase):
         formatter = ConsoleFormatter(use_color=False)
         message = "$ kubectl apply -f k8s/kibana"
         self.assertTrue(formatter.format(record(message=message)).endswith(message))
+
+
+class LogExceptionTest(unittest.TestCase):
+    def setUp(self):
+        self.logger = logging.getLogger("oxn.tests.log_exception")
+
+    def test_it_logs_the_class_name_and_message_as_error(self):
+        self.logger.setLevel(logging.INFO)
+        with self.assertLogs(self.logger, level=logging.INFO) as logs:
+            log_exception(self.logger, ValueError("bad spec"))
+        self.assertEqual(logs.records[0].levelno, logging.ERROR)
+        self.assertEqual(logs.records[0].getMessage(), "ValueError: bad spec")
+        self.assertFalse(logs.records[0].exc_info)
+
+    def test_it_prefixes_a_message_and_uses_the_given_level(self):
+        self.logger.setLevel(logging.INFO)
+        with self.assertLogs(self.logger, level=logging.INFO) as logs:
+            log_exception(self.logger, ValueError("timeout"), "Failed to capture latency", level=logging.WARNING)
+        self.assertEqual(logs.records[0].levelno, logging.WARNING)
+        self.assertEqual(logs.records[0].getMessage(), "Failed to capture latency: ValueError: timeout")
+
+    def test_it_includes_the_stack_trace_on_debug_level(self):
+        self.logger.setLevel(logging.DEBUG)
+        try:
+            raise ValueError("bad spec")
+        except ValueError as e:
+            with self.assertLogs(self.logger, level=logging.DEBUG) as logs:
+                log_exception(self.logger, e)
+        self.assertIs(logs.records[0].exc_info[0], ValueError)

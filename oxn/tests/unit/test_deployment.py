@@ -6,7 +6,7 @@ from unittest import mock
 from kubernetes.client.exceptions import ApiException
 
 from oxn.common.errors import DeploymentException, OxnException
-from oxn.core.engine import Engine
+from oxn.core.engine import Engine, Phase
 from oxn.core.validation import load_experiment_specification, read_experiment_specification, validate_syntax
 from oxn.models.experiment_spec import DeploymentDescription
 from oxn.orchestration.deployment import Deployment
@@ -199,7 +199,7 @@ class EngineOrderTest(unittest.TestCase):
         ), mock.patch("oxn.core.engine.ExperimentRunner", calls.runner):
             with self.assertRaises(KeyboardInterrupt):
                 engine.run(runs=1, orchestration_timeout=1)
-        self.assertTrue(engine.sue_running)
+        self.assertIs(engine.phase, Phase.PREPARATION)
         return [name for name, _, _ in calls.mock_calls]
 
     def test_kubernetes_treatments_and_the_load_generator_need_the_deployed_sue(self):
@@ -229,3 +229,119 @@ class EngineMissingResponseTest(unittest.TestCase):
             engine.run(runs=1, orchestration_timeout=1)
         self.assertEqual([c.kwargs["response_key"] for c in write_dataframe.call_args_list], ["captured"])
         self.assertEqual([c.kwargs["response"] for c in engine.reporter.gather_interaction.call_args_list], [captured])
+
+
+class EnginePhaseTest(unittest.TestCase):
+    def _run(self, keep_sue=False, orchestrate_error=None):
+        runner = mock.MagicMock()
+        runner.treatments = {}
+        runner.observer.variables.return_value = {}
+        engine = Engine(configuration_path="spec.yml", report_path="reports/", keep_sue=keep_sue)
+        engine.spec = mock.MagicMock()
+        engine.reporter = mock.MagicMock()
+        phases = []
+        enter = engine._enter
+        engine._enter = lambda phase: (phases.append(phase), enter(phase))
+        with mock.patch("oxn.core.engine.KubernetesOrchestrator") as orchestrator, mock.patch(
+            "oxn.core.engine.LocustKubernetesLoadgenerator"
+        ), mock.patch("oxn.core.engine.ExperimentRunner", return_value=runner):
+            orchestrator.return_value.orchestrate.side_effect = orchestrate_error
+            try:
+                engine.run(runs=1, orchestration_timeout=1)
+            except OxnException:
+                pass
+        return engine, phases, orchestrator.return_value
+
+    def test_a_new_engine_is_in_initialization(self):
+        self.assertIs(Engine(configuration_path="spec.yml", report_path="reports/").phase, Phase.INITIALIZATION)
+
+    def test_a_run_passes_through_every_phase(self):
+        engine, phases, orchestrator = self._run()
+        self.assertEqual(
+            phases,
+            [Phase.ORCHESTRATION, Phase.PREPARATION, Phase.LOAD, Phase.REPORTING, Phase.TEARDOWN, Phase.COMPLETED],
+        )
+        orchestrator.teardown.assert_called_once()
+
+    def test_keep_sue_skips_the_teardown_phase(self):
+        engine, phases, orchestrator = self._run(keep_sue=True)
+        self.assertNotIn(Phase.TEARDOWN, phases)
+        self.assertIs(engine.phase, Phase.COMPLETED)
+        orchestrator.teardown.assert_not_called()
+
+    def test_a_failed_deploy_is_left_to_main_to_tear_down(self):
+        engine, _, orchestrator = self._run(orchestrate_error=OxnException(message="deploy failed"))
+        self.assertIs(engine.phase, Phase.ORCHESTRATION)
+        self.assertTrue(engine.phase.sue_deployed)
+        orchestrator.teardown.assert_not_called()
+
+    def test_only_initialization_and_completed_have_no_sue(self):
+        self.assertEqual(
+            [phase for phase in Phase if not phase.sue_deployed], [Phase.INITIALIZATION, Phase.COMPLETED]
+        )
+
+    def test_only_the_load_phase_has_a_running_load_generator(self):
+        self.assertEqual([phase for phase in Phase if phase.loadgen_running], [Phase.LOAD])
+
+
+class EngineTeardownTest(unittest.TestCase):
+    def _teardown(self, phase, keep_sue=False):
+        engine = Engine(configuration_path="spec.yml", report_path="reports/")
+        engine.generator = mock.MagicMock()
+        engine.orchestrator = mock.MagicMock()
+        engine.phase = phase
+        engine.keep_sue = keep_sue
+        engine.teardown()
+        return engine.generator.kill.called, engine.orchestrator.teardown.called
+
+    def test_it_kills_the_load_generator_and_tears_down_the_sue_in_the_load_phase(self):
+        self.assertEqual(self._teardown(Phase.LOAD), (True, True))
+
+    def test_it_tears_down_a_partial_deploy(self):
+        self.assertEqual(self._teardown(Phase.ORCHESTRATION), (False, True))
+
+    def test_it_retries_a_failed_teardown(self):
+        self.assertEqual(self._teardown(Phase.TEARDOWN), (False, True))
+
+    def test_it_cleans_up_nothing_before_the_deploy_or_after_the_run(self):
+        self.assertEqual(self._teardown(Phase.INITIALIZATION), (False, False))
+        self.assertEqual(self._teardown(Phase.COMPLETED), (False, False))
+
+    def test_it_keeps_the_sue_with_keep_sue(self):
+        self.assertEqual(self._teardown(Phase.LOAD, keep_sue=True), (True, False))
+
+    def test_a_successful_teardown_completes_the_run(self):
+        engine = Engine(configuration_path="spec.yml", report_path="reports/")
+        engine.orchestrator = mock.MagicMock()
+        engine.phase = Phase.REPORTING
+        engine.teardown()
+        self.assertIs(engine.phase, Phase.COMPLETED)
+
+    def test_a_failed_teardown_stays_in_the_teardown_phase(self):
+        engine = Engine(configuration_path="spec.yml", report_path="reports/")
+        engine.orchestrator = mock.MagicMock()
+        engine.orchestrator.teardown.side_effect = OxnException(message="teardown failed")
+        engine.phase = Phase.REPORTING
+        with self.assertRaises(OxnException):
+            engine.teardown()
+        self.assertIs(engine.phase, Phase.TEARDOWN)
+
+
+class MainCleanupTest(unittest.TestCase):
+    def _run_experiment(self, error):
+        from oxn.cli.main import run_experiment
+
+        with mock.patch("oxn.cli.main.Engine") as engine_class:
+            engine = engine_class.return_value
+            engine.phase = Phase.LOAD
+            engine.run.side_effect = error
+            run_experiment(mock.MagicMock(keep_sue=True))
+        engine_class.assert_called_once()
+        self.assertTrue(engine_class.call_args.kwargs["keep_sue"])
+        return engine
+
+    def test_main_tears_down_through_the_engine_after_ctrl_c(self):
+        self._run_experiment(KeyboardInterrupt).teardown.assert_called_once_with()
+
+    def test_main_tears_down_through_the_engine_after_an_error(self):
+        self._run_experiment(OxnException(message="deploy failed")).teardown.assert_called_once_with()

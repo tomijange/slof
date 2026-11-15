@@ -6,7 +6,7 @@ import yaml
 
 from oxn.common.errors import OxnException
 from oxn.core.runner import ExperimentRunner
-from oxn.core.treatments import EmptyTreatment
+from oxn.treatments.runtime import EmptyTreatment
 from oxn.core.validation import SemanticValidator, validate_syntax
 from oxn.loadgen.locust_kubernetes import LocustKubernetesLoadgenerator
 from oxn.models.experiment_spec import (

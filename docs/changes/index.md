@@ -20,6 +20,7 @@ SLOF builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legler. Th
 13-rename-to-slof
 14-remove-setup-scripts
 15-material-theme
+16-refactorings
 ```
 
 ## In order
@@ -41,6 +42,7 @@ SLOF builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legler. Th
 | 13 | [Rename to SLOF](13-rename-to-slof.md) | The project is called SLOF, with its own repository and docs site. The package and `oxn` command keep their names |
 | 14 | [Removal of the setup scripts](14-remove-setup-scripts.md) | No `setup/` folder. `oxn setup` prepares the cluster, Getting started covers installing |
 | 15 | [Material theme for the docs](15-material-theme.md) | The docs site uses `sphinx-immaterial`, with tabs, search, light and dark mode and the theme's Mermaid renderer |
+| 16 | [Refactorings](16-refactorings.md) | One `phase` field and `Engine.teardown()` instead of `sue_running` and `loadgen_running`. Failed or interrupted deployments are torn down. One module per treatment in `oxn/treatments/runtime` and `compile_time`. `experiment_key` differs per spec. One `log_exception` helper in `oxn/common/log.py` |
 
 ## GOXN and now
 
@@ -49,14 +51,16 @@ What differs from GOXN today, by area. "Changed in" points to the change pages, 
 | Area | GOXN | Now | Changed in | Documented in |
 |---|---|---|---|---|
 | Name and repository | GOXN, `JulianLegler/goxn` | SLOF, `tomijange/slof` | [13](13-rename-to-slof.md#name-and-links) | [Overview](../index.md) |
-| Code layout | About 25 modules side by side in `oxn/` | Packages by responsibility | [1](01-package-layout.md#packages) | [Architecture](../architecture.md#packages) |
+| Code layout | About 25 modules side by side in `oxn/` | Packages by responsibility, one module per treatment | [1](01-package-layout.md#packages), [16](16-refactorings.md#treatment-modules) | [Architecture](../architecture.md#packages) |
 | Spec format | `schema` validation, unknown keys ignored, `sue.compose` required | Typed pydantic model, unknown keys rejected, no `compose` | [2](02-typed-specs.md#the-spec-model), [12](12-remove-docker-compose.md#spec) | [Experiments](../experiments.md#spec-structure) |
 | Orchestrators | `kubernetes`, with no-op deploy and teardown, and `docker-compose` | `kubernetes`, which deploys and tears down the spec's stack | [3](03-deployment-section.md#what-deploy-and-teardown-do), [12](12-remove-docker-compose.md#orchestrator) | [Deployments](../deployments.md), [Architecture](../architecture.md#one-experiment-run) |
 | SUE lifecycle | `run_experiment_suite.sh` runs `helm` by hand | A `deployment` section in every spec, `oxn deploy` and `oxn teardown` | [3](03-deployment-section.md#what-deploy-and-teardown-do), [11](11-current-stack-specs.md#deployment-sections) | [Deployments](../deployments.md#shipped-setups) |
 | Run order on Kubernetes | Compile-time treatments, then deploy | Deploy, then compile-time treatments | [3](03-deployment-section.md#changed-run-order-on-kubernetes) | [Architecture](../architecture.md#one-experiment-run) |
 | Cluster access | Direct HTTP to pod and cluster IPs, `oxn` inside the cluster network | Kubernetes API server proxy | [4](04-api-server-proxy.md#the-cluster-proxy) | [Deployments](../deployments.md#reaching-the-cluster-network) |
 | Cluster setup | `setup/*.sh` and README commands | `oxn setup`, no `setup/` folder | [5](05-oxn-setup.md#the-command), [14](14-remove-setup-scripts.md#setup-scripts) | [Getting started](../getting-started.md#prepare-the-cluster) |
-| Treatments | Kubernetes and Docker-only treatments | Kubernetes treatments only | [12](12-remove-docker-compose.md#treatments) | [Experiments](../experiments.md#treatments) |
+| Treatments | Kubernetes and Docker-only treatments, `is_runtime()` per class | Kubernetes treatments only, in a runtime and a compile-time package | [12](12-remove-docker-compose.md#treatments), [16](16-refactorings.md#treatment-modules) | [Experiments](../experiments.md#treatments) |
+| Cleanup after an error or ctrl-c | Two flags, a failed or interrupted deployment is left behind | `Engine.phase`, every phase from deployment to teardown is cleaned up | [16](16-refactorings.md#engine-phases) | [Architecture](../architecture.md#phases-and-cleanup) |
+| Experiment key in reports | `e3b0c442` for every spec | Hash of the spec path | [16](16-refactorings.md#experiment-key) | [Experiments](../experiments.md#results) |
 | Missing data | A response without data aborts the run | It is skipped with a warning | [6](06-skip-missing-responses.md#skipping-responses-without-data) | [Experiments](../experiments.md#results) |
 | Resource accounting | `--accounting` with Docker container statistics | Removed, CPU and energy come from responses | [12](12-remove-docker-compose.md#resource-accounting) | [Experiment design](../experiment-design.md#responses) |
 | Logging | One uncoloured format, some modules on the root logger | Module loggers, coloured console, timings | [7](07-logging.md#console-format) | [Experiments](../experiments.md#running-an-experiment) |
@@ -74,6 +78,7 @@ What the changes so far leave open:
 |---|---|
 | Several unit tests from GOXN fail or do not import. [Removal of Docker Compose support](12-remove-docker-compose.md) removed some of them. | [1](01-package-layout.md#known-limitations) |
 | The debug configuration in `.vscode/launch.json` still runs the removed `experiments/debug.yml`. | [9](09-repository-layout.md#known-limitations) |
+| After an error or ctrl-c, in-cluster Locust pods and treatments are only removed with the SUE, so they stay with `--keep-sue`. | [16](16-refactorings.md#known-limitations) |
 
 ## Writing a change page
 

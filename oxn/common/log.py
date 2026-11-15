@@ -26,6 +26,14 @@ class ConsoleFormatter(KonsoleFormatter):
         return f"{self.applyStyle(self.DETAIL, origin)} {super().formatMessage(record)}"
 
 
+def log_exception(logger, exception, message=None, level=logging.ERROR):
+    """Log an exception with its class name, including the stack trace if the logger is on the debug level"""
+    text = f"{exception.__class__.__name__}: {exception}"
+    if message:
+        text = f"{message}: {text}"
+    logger.log(level, text, exc_info=logger.isEnabledFor(logging.DEBUG))
+
+
 def initialize_logging(loglevel, logfile=None):
     loglevel = loglevel.upper()
 

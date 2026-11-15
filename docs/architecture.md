@@ -7,7 +7,8 @@
 | Package | Modules |
 |---|---|
 | `oxn/cli/` | `main.py` (entry point), `argparser.py`, `installer.py` (`oxn setup`) |
-| `oxn/core/` | `engine.py`, `runner.py`, `treatments.py`, `validation.py`, `context.py` |
+| `oxn/core/` | `engine.py`, `runner.py`, `validation.py`, `context.py` |
+| `oxn/treatments/` | `runtime/` and `compile_time/`, one module per treatment |
 | `oxn/orchestration/` | `kubernetes_orchestrator.py`, `deployment.py`, `cluster_proxy.py` |
 | `oxn/loadgen/` | `locust_kubernetes.py`, `config_load_generator.py`, `file_load_generator.py`, `loadgen_config.py` |
 | `oxn/observability/` | `prometheus.py`, `jaeger.py`, `observer.py`, `responses.py` |
@@ -29,14 +30,30 @@
 
 1. **Set up.** The engine creates a `KubernetesOrchestrator` from `kubernetes_orchestrator.py` and an `ExperimentRunner` from `runner.py`.
 2. **Deploy.** If the spec has a `deployment` section, `deployment.py` installs the stack.
-3. **Compile-time treatments.** The runner applies treatments that change the SUE's configuration before the load starts. They patch the deployed SUE and restart its pods. The orchestrator then checks that the SUE is ready.
+3. **Compile-time treatments.** The runner applies the treatments from `treatments/compile_time/`, which change the SUE's configuration before the load starts. They patch the deployed SUE and restart its pods. The orchestrator then checks that the SUE is ready.
 4. **Load.** The engine creates a `LocustKubernetesLoadgenerator` from `locust_kubernetes.py`, which starts Locust in the cluster.
-5. **Runtime treatments.** The runner applies each treatment from `treatments.py` and then cleans it up.
+5. **Runtime treatments.** The runner applies each treatment from `treatments/runtime/` and then cleans it up.
 6. **Observe.** `observer.py` collects the response variables from `responses.py`, which query `prometheus.py` and `jaeger.py`.
 7. **Store and report.** `store.py` writes each response to `store.h5`, and `report.py` gathers the data for the report.
 8. **Tear down.** `deployment.py` removes the stack, unless `--keep-sue` is set.
 
 After the last run, the report is written to the `--report` directory.
+
+## Phases and cleanup
+
+`Engine.phase` holds the step of the current run, as a value of the `Phase` enum in `engine.py`. Changes are logged at debug level.
+
+| Phase | Steps above | SUE may be deployed | Load generator may be running |
+|---|---|---|---|
+| `initialization` | 1, in the first run | No | No |
+| `orchestration` | 2 | Yes | No |
+| `preparation` | 3, and creating the load generator | Yes | No |
+| `load` | 4 to 6 | Yes | Yes |
+| `reporting` | 7 | Yes | No |
+| `teardown` | 8, skipped with `--keep-sue` | Yes | No |
+| `completed` | After each run, and 1 of the next run | No | No |
+
+`Engine.teardown` cleans up based on the phase. It kills the load generator in the `load` phase and tears down the SUE in every phase from `orchestration` to `teardown`, unless `--keep-sue` is set. It ends every run. When a run fails or is interrupted with ctrl-c, `main.py` logs the phase it stopped in and calls it too.
 
 ## Older modules
 
