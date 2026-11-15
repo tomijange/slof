@@ -8,27 +8,27 @@
 |---|---|
 | `oxn/cli/` | `main.py` (entry point), `argparser.py`, `installer.py` (`oxn setup`) |
 | `oxn/core/` | `engine.py`, `runner.py`, `validation.py`, `context.py` |
-| `oxn/treatments/` | `runtime/` and `compile_time/`, one module per treatment |
+| `oxn/treatments/` | `runtime/` and `compile_time/`, one module per treatment, and `registry.py`, which maps actions to treatment classes |
 | `oxn/orchestration/` | `kubernetes_orchestrator.py`, `deployment.py`, `cluster_proxy.py` |
 | `oxn/loadgen/` | `locust_kubernetes.py`, `file_load_generator.py` |
 | `oxn/observability/` | `prometheus.py`, `jaeger.py`, `observer.py`, `responses.py` |
 | `oxn/reporting/` | `report.py`, `store.py` |
 | `oxn/common/` | `errors.py`, `utils.py`, `settings.py`, `log.py` |
-| `oxn/models/` | `experiment_spec.py` (typed model of an experiment spec) and base classes for orchestrators, load generators, treatments and responses |
+| `oxn/models/` | `experiment_spec.py` (typed model of an experiment spec), `treatment_params.py` (base classes of treatment params) and base classes for orchestrators, load generators, treatments and responses |
 | `oxn/steering/` | Sidecar container and controller that apply network treatments inside pods |
 
 ## Startup
 
 1. `oxn/__main__.py` calls `cli/main.py`.
 2. `main.py` parses the command line with `argparser.py` and sets up logging with `log.py`. `oxn setup`, `oxn deploy` and `oxn teardown` branch off here.
-3. `main.py` creates an `Engine` from `engine.py`. The engine reads the spec with `validation.py`, which parses it into the `ExperimentSpec` model from `models/experiment_spec.py`. The orchestrators, load generator, runner and observer all read from that model.
-4. `context.py` loads any treatments passed with `--extend`.
+3. `main.py` creates an `Engine` from `engine.py`. `context.py` loads any treatments passed with `--extend`, and the engine puts them into a `TreatmentRegistry` from `treatments/registry.py`, next to the built-in ones.
+4. The engine reads the spec with `validation.py`, which parses it into the `ExperimentSpec` model from `models/experiment_spec.py`. The registry checks the action and params of every treatment while the spec is parsed, so a wrong treatment stops `oxn` before anything is deployed. The orchestrators, load generator, runner and observer all read from that model.
 
 ## One experiment run
 
 `Engine.run` repeats these steps for each run requested with `--times`:
 
-1. **Set up.** The engine creates a `KubernetesOrchestrator` from `kubernetes_orchestrator.py` and an `ExperimentRunner` from `runner.py`.
+1. **Set up.** The engine creates a `KubernetesOrchestrator` from `kubernetes_orchestrator.py` and an `ExperimentRunner` from `runner.py`, which builds the treatments of the spec with the registry.
 2. **Deploy.** If the spec has a `deployment` section, `deployment.py` installs the stack.
 3. **Compile-time treatments.** The runner applies the treatments from `treatments/compile_time/`, which change the SUE's configuration before the load starts. They patch the deployed SUE and restart its pods. The orchestrator then checks that the SUE is ready.
 4. **Load.** The engine creates a `LocustKubernetesLoadgenerator` from `locust_kubernetes.py`, which starts Locust in the cluster.

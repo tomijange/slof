@@ -19,14 +19,12 @@ SECONDS_MAP = {
 """Map used to convert time strings to seconds"""
 
 time_string_format_regex = r"(\d+)(us|ms|s|m|h|d)"
+"""One number and unit of a time string"""
 
 
-def validate_time_string(time_string):
-    """
-    Validate that a time string has units
-
-    """
-    return bool(re.match(time_string_format_regex, time_string))
+def validate_time_string(time_string) -> bool:
+    """Validate that a time string consists of numbers with units only, like 90s or 1m30s"""
+    return bool(re.fullmatch(f"(?:{time_string_format_regex})+", time_string))
 
 
 def time_string_to_seconds(time_string) -> float:

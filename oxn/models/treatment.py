@@ -1,63 +1,86 @@
 """
 Purpose: Defines the base classes for treatments.
 Functionality: Provides an abstract base class Treatment with methods to be implemented by subclasses,
-and RuntimeTreatment and CompileTimeTreatment, which decide is_runtime() for them.
+and RuntimeTreatment and CompileTimeTreatment, which decide is_runtime() for them. Each treatment declares its
+action key and the model of its params, see oxn/models/treatment_params.py.
 Connection: Used as base classes for the treatment implementations in oxn/treatments/runtime and oxn/treatments/compile_time.
 """
 
 import abc
 import logging
 import uuid
-from typing import List
+from typing import Any, ClassVar, Generic, List, Mapping, TypeVar, cast
+
+import pydantic
 
 from oxn.common.errors import OxnException
 from oxn.common.utils import humanize_utc_timestamp
 from oxn.models.orchestrator import Orchestrator
+from oxn.models.treatment_params import TreatmentParams
 
 logger = logging.getLogger(__name__)
 
+P = TypeVar("P", bound=TreatmentParams)
 
-# TODO: think about refactoring validation of params into validator class so it can happen earlier
 
+class Treatment(abc.ABC, Generic[P]):
+    """
+    Base class of all treatments
 
-class Treatment(abc.ABC):
-    def __init__(self, config, name, orchestrator):
+    A subclass sets action, the key that selects it in the experiment specification, and Params, the model of its
+    params section. The spec validates the params with that model while parsing, before anything is deployed, so a
+    treatment instance always holds valid params.
+    """
+
+    action: ClassVar[str]
+    """The key that selects this treatment in the action field of the experiment specification"""
+    Params: ClassVar[type[TreatmentParams]] = TreatmentParams
+    """The model of the params section, a subclass of TreatmentParams with the same type as P"""
+
+    def __init__(self, params: P | Mapping[str, Any], name: str, orchestrator: Orchestrator):
         self.id: str = uuid.uuid4().hex
         """Random machine-readable unique identifier"""
         self.name: str = name
         """The name of the treatment as provided in the experiment specification"""
         self.orchestrator: Orchestrator = orchestrator
         """A reference to the orchestrator instance"""
-        self.config: dict = config
-        """A dictionary containing parameter names and supplied parameter values from the experiment specification"""
+        try:
+            self.params: P = cast(P, self.validate_params(params))
+            """The validated params from the experiment specification"""
+        except pydantic.ValidationError as e:
+            raise OxnException(message=f"Invalid params for treatment {name}", explanation=str(e))
         self.start: float | None = None
         """A unix float timestamp in utc indicating when the treatment instance has been started"""
         self.end: float | None = None
         """A unix float timestamp in utc indicating when the treatment instance has finished execution"""
-        self.messages = []
+        self.messages: List[str] = []
         """A list of strings to provide helpful messages to the user in case of any errors"""
-        validates = self._validate_params()
-        """Validate the parameters the treatment instance was provided with"""
 
-        if not validates:
-            raise OxnException(
-                message=f"Invalid configuration for {self.__repr__()} provided.",
-                explanation="\n".join(self.messages),
-            )
-
-        orchestrator_validates = self._validate_orchestrator()
-        if not orchestrator_validates:
+        if not self._validate_orchestrator():
             raise OxnException(
                 message=f"Invalid orchestrator for {self.__repr__()} provided.",
                 explanation="\n".join(self.messages),
             )
 
-        self._transform_params()
-        """Populate the treatment with any additional values depending on user-supplied parameters"""
+    @classmethod
+    def validate_params(cls, params: TreatmentParams | Mapping[str, Any]) -> TreatmentParams:
+        """
+        Return the params as an instance of Params
+
+        Params from the spec are already validated and returned as they are. Mappings, for example from tests or
+        extension code, and params of another model are validated here.
+
+        :raises pydantic.ValidationError: if the params do not match Params
+        """
+        if isinstance(params, cls.Params):
+            return params
+        if isinstance(params, pydantic.BaseModel):
+            params = params.model_dump()
+        return cls.Params.model_validate(params)
 
     def __repr__(self):
-        config_string = [f"{key}={value}, " for key, value in self.config.items()]
-        return f"{self.__class__.__name__}(name={self.name}, {''.join(config_string)})"
+        params = ", ".join(f"{key}={value}" for key, value in self.params.model_dump().items())
+        return f"{self.__class__.__name__}(name={self.name}, {params})"
 
     @property
     def treatment_type(self):
@@ -78,12 +101,6 @@ class Treatment(abc.ABC):
         """Provide a human-readable version of the end timestamp"""
         return humanize_utc_timestamp(self.end)
 
-    @property
-    @abc.abstractmethod
-    def action(self):
-        """The action key is used to match treatment descriptions from the experiment specification"""
-        return self.action
-
     @abc.abstractmethod
     def preconditions(self) -> bool:
         """
@@ -103,8 +120,7 @@ class Treatment(abc.ABC):
     @abc.abstractmethod
     def inject(self) -> None:
         """
-        Inject the treatment. This method takes no arguments. Arguments to the injection function
-        need to be supplied via the params method.
+        Inject the treatment. This method takes no arguments, it reads its arguments from self.params.
 
         :return: None
         """
@@ -117,30 +133,6 @@ class Treatment(abc.ABC):
         :return:
         """
         logger.info(f"Cleaning treatment {self.name}")
-
-    @abc.abstractmethod
-    def params(self) -> dict:
-        """
-        Return parameters of the Treatment together with expected types
-        :return: A dictionary mapping parameter names to parameter types
-        """
-
-    @abc.abstractmethod
-    def _validate_params(self) -> bool:
-        """
-        Validate the supplied parameters for this treatment.
-        This method should return true on a valid config, false otherwise.
-        It can optionally populate the message dict with a helpful error message.
-        """
-
-    @abc.abstractmethod
-    def _transform_params(self) -> None:
-        """
-        Optionally transform any supplied parameters into a format required by the treatment
-        This method returns None and should update the values in self.config.
-        This method can be used to supply additional parameters to the injection and cleanup methods,
-        depending on the use case.
-        """
 
     @abc.abstractmethod
     def is_runtime(self) -> bool:
@@ -171,7 +163,7 @@ class Treatment(abc.ABC):
         return self.orchestrator.get_orchestrator_type() in valid_for
 
 
-class RuntimeTreatment(Treatment, abc.ABC):
+class RuntimeTreatment(Treatment[P], abc.ABC):
     """
     Base class for runtime treatments
 
@@ -182,7 +174,7 @@ class RuntimeTreatment(Treatment, abc.ABC):
         return True
 
 
-class CompileTimeTreatment(Treatment, abc.ABC):
+class CompileTimeTreatment(Treatment[P], abc.ABC):
     """
     Base class for compile-time treatments
 

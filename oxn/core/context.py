@@ -33,7 +33,7 @@ class Context:
         """A thing is a treatment class if it is a class, and a subclass of treatment, and not an abstract treatment"""
         return bool(inspect.isclass(thing) and issubclass(thing, Treatment) and not inspect.isabstract(thing))
 
-    def load_treatment_file(self) -> List[Treatment]:
+    def load_treatment_file(self) -> List[type[Treatment]]:
         """Load user-supplied treatments from a file"""
         if not self.treatment_path:
             return []

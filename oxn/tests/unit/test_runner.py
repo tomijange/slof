@@ -6,6 +6,7 @@ from oxn.core.runner import ExperimentRunner
 from oxn.models.treatment import CompileTimeTreatment, RuntimeTreatment
 from oxn.treatments import compile_time as compile_time_package
 from oxn.treatments import runtime as runtime_package
+from oxn.treatments.registry import TreatmentRegistry
 
 
 class ExperimentHashTest(unittest.TestCase):
@@ -22,7 +23,6 @@ class ExperimentHashTest(unittest.TestCase):
         with (
             mock.patch("oxn.core.runner.Observer"),
             mock.patch.object(ExperimentRunner, "_build_treatments"),
-            mock.patch.object(ExperimentRunner, "_extend_treatments"),
         ):
             runner = ExperimentRunner(orchestrator=mock.MagicMock(), config=mock.MagicMock())
         self.assertIsNone(runner.short_hash)
@@ -39,12 +39,15 @@ class TreatmentKindTest(unittest.TestCase):
     }
 
     def test_every_registered_treatment_is_runtime_or_compile_time(self):
-        self.assertEqual(set(ExperimentRunner.treatment_keys), self.RUNTIME | self.COMPILE_TIME)
-        for action, treatment_class in ExperimentRunner.treatment_keys.items():
+        registry = TreatmentRegistry()
+        self.assertEqual(set(registry.actions), self.RUNTIME | self.COMPILE_TIME)
+        for action in registry.actions:
+            treatment_class = registry.treatment_class(action)
             with self.subTest(action=action):
                 runtime = action in self.RUNTIME
                 base = RuntimeTreatment if runtime else CompileTimeTreatment
                 self.assertTrue(issubclass(treatment_class, base))
+                self.assertEqual(treatment_class.action, action)
                 # is_runtime() only depends on the class, so the instance needs no constructor call
                 treatment = treatment_class.__new__(treatment_class)
                 self.assertIs(treatment.is_runtime(), runtime)

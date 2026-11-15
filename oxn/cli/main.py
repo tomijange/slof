@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 
 def manage_sue(args):
     """Apply or remove the deployment section of a spec without running the experiment"""
-    deployment = Deployment.from_experiment_spec(load_experiment_specification(args.spec))
+    # the treatments don't matter here, and extension treatments are not loaded
+    spec = load_experiment_specification(args.spec, check_treatments=False)
+    deployment = Deployment.from_experiment_spec(spec)
     if deployment is None:
         raise OxnException(message=f"Experiment spec {args.spec} has no deployment section")
     if args.command == "deploy":

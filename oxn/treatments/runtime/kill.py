@@ -2,32 +2,39 @@
 
 import logging
 
+from pydantic import Field
+
 from oxn.common.errors import OrchestratorException
 from oxn.models.treatment import RuntimeTreatment
+from oxn.models.treatment_params import PodSelectorParams
 from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 logger = logging.getLogger(__name__)
 
 
-class KubernetesKillTreatment(RuntimeTreatment):
+class KillParams(PodSelectorParams):
+    """Params of kubernetes_kill"""
+
+    amount_to_kill: int = Field(ge=1)
+    """How many of the matching pods to kill"""
+
+
+class KubernetesKillTreatment(RuntimeTreatment[KillParams]):
     """
     Kill a Kubernetes Pod.
     """
 
     action = "kubernetes_kill"
+    Params = KillParams
 
     def preconditions(self) -> bool:
         """Check if the kubernetes pod is running"""
         super().preconditions()
-        namespace = self.config.get("namespace")
-        label_selector = self.config.get("label_selector")
-        label = self.config.get("label")
-        amount_to_kill = self.config.get("amount_to_kill")
+        namespace = self.params.namespace
+        label_selector = self.params.label_selector
+        label = self.params.label
+        amount_to_kill = self.params.amount_to_kill
         try:
-            assert namespace
-            assert label_selector
-            assert label
-            assert amount_to_kill
             assert isinstance(self.orchestrator, KubernetesOrchestrator)
             self.pods = KubernetesOrchestrator.get_pods(self.orchestrator, namespace, label_selector, label)
             if self.pods is None:
@@ -47,7 +54,7 @@ class KubernetesKillTreatment(RuntimeTreatment):
                     return False
 
         except OrchestratorException as e:
-            self.messages.append(e.message)
+            self.messages.append(str(e.message))
             return False
 
         return True
@@ -60,7 +67,7 @@ class KubernetesKillTreatment(RuntimeTreatment):
             logger.error("No pods found to kill")
             return
 
-        amount_to_kill = self.config.get("amount_to_kill")
+        amount_to_kill = self.params.amount_to_kill
         pods_to_kill = self.pods[:amount_to_kill]
         for pod in pods_to_kill:
             KubernetesOrchestrator.kill_pod(self.orchestrator, pod)
@@ -72,29 +79,6 @@ class KubernetesKillTreatment(RuntimeTreatment):
     def clean(self) -> None:
         # TODO: Wait untill als pods are running again?
         super().clean()
-
-    def params(self) -> dict:
-        return {
-            "namespace": str,
-            "label_selector": str,
-            "label": str,
-            "amount_to_kill": int,
-        }
-
-    def _validate_params(self) -> bool:
-        for key, value in self.params().items():
-            if key == "namespace" and key not in self.config:
-                self.messages.append(f"Parameter {key} has to be supplied for {self.treatment_type}")
-            if key == "label_selector" and key not in self.config:
-                self.messages.append(f"Parameter {key} has to be supplied for {self.treatment_type}")
-            if key == "label" and key not in self.config:
-                self.messages.append(f"Parameter {key} has to be supplied for {self.treatment_type}")
-            if key == "amount_to_kill" and key not in self.config:
-                self.messages.append(f"Parameter {key} has to be supplied for {self.treatment_type}")
-        return not self.messages
-
-    def _transform_params(self) -> None:
-        return super()._transform_params()
 
     def _validate_orchestrator(self) -> bool:
         return self._orchestrator_is_one_of(["kubernetes"])

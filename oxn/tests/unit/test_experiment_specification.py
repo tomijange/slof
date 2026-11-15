@@ -19,6 +19,7 @@ from oxn.models.experiment_spec import (
 from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 from oxn.tests.unit.spec_mocks import experiment_spec_mock, kubernetes_experiment
 from oxn.treatments.runtime import EmptyTreatment
+from oxn.treatments.runtime.empty import EmptyParams
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -95,7 +96,7 @@ class SpecificationTest(unittest.TestCase):
         treatment = validate_syntax(self.loaded_spec).experiment.treatments[0]
         self.assertEqual(treatment.name, "empty_treatment")
         self.assertEqual(treatment.action, "empty")
-        self.assertEqual(treatment.params, {"duration": "30s"})
+        self.assertEqual(treatment.params, EmptyParams(duration="30s"))
 
     def test_it_applies_defaults_for_optional_sections(self):
         self.loaded_spec["experiment"].pop("treatments")
@@ -146,7 +147,7 @@ class SpecConsumersTest(unittest.TestCase):
     def test_the_runner_builds_treatments(self):
         runner = ExperimentRunner(orchestrator=mock.MagicMock(), config=kubernetes_spec())
         self.assertIsInstance(runner.treatments["empty_treatment"], EmptyTreatment)
-        self.assertEqual(runner.treatments["empty_treatment"].config["duration"], "1m")
+        self.assertEqual(runner.treatments["empty_treatment"].params.duration_seconds, 60)
 
     def test_the_load_generator_reads_its_section(self):
         orchestrator = mock.MagicMock(spec=KubernetesOrchestrator)

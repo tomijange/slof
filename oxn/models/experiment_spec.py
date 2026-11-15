@@ -6,9 +6,20 @@ Connection: Built by validation.py and handed by the Engine to the orchestrators
 """
 
 import json
-from typing import Annotated, Any, Callable, Dict, List, Literal, Optional, Union
+from typing import Annotated, Any, Callable, Dict, List, Literal, Optional, Protocol, Union
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+import pydantic
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    SerializeAsAny,
+    ValidationInfo,
+    field_validator,
+)
+
+from oxn.models.treatment_params import TreatmentParams, UncheckedParams
 
 DEFAULT_TIMEOUT = "15m"
 """Default time to wait for a single deployment step"""
@@ -88,12 +99,75 @@ ResponseDescription = Annotated[
 ]
 
 
+class TreatmentCatalog(Protocol):
+    """
+    What the spec needs to know about treatments to validate them, see oxn.treatments.registry.TreatmentRegistry
+
+    Passed as the validation context key TREATMENTS_CONTEXT_KEY. Without it, actions are not checked and params stay
+    UncheckedParams.
+    """
+
+    @property
+    def actions(self) -> List[str]: ...
+
+    def params_model(self, action: str) -> type[TreatmentParams]: ...
+
+
+TREATMENTS_CONTEXT_KEY = "treatments"
+"""Key of the TreatmentCatalog in the validation context of ExperimentSpec.model_validate"""
+
+
+def _treatment_catalog(info: ValidationInfo) -> Optional[TreatmentCatalog]:
+    return (info.context or {}).get(TREATMENTS_CONTEXT_KEY)
+
+
+def _describe_errors(error: pydantic.ValidationError) -> str:
+    """Flatten the errors of a nested model, which pydantic only reports as one value error of the outer model"""
+    return "; ".join(
+        f"{'.'.join(str(part) for part in detail['loc']) or 'params'}: {detail['msg'].removeprefix('Value error, ')}"
+        for detail in error.errors()
+    )
+
+
 class TreatmentDescription(SpecModel):
-    """A treatment, its params are validated by the treatment class matching the action"""
+    """
+    A treatment
+
+    The action selects the treatment class, whose params model validates the params while the spec is parsed:
+
+        treatments:
+          - delay_treatment:
+              action: delay
+              params: {namespace: system-under-evaluation, label_selector: app.kubernetes.io/name,
+                       label: recommendation, interface: eth0, duration: 10m, delay_time: 45ms}
+    """
 
     name: str
     action: str
-    params: Dict[str, Any]
+    params: SerializeAsAny[TreatmentParams] = Field(default_factory=UncheckedParams)
+    """The params as the model of the treatment class, UncheckedParams if treatments are not checked"""
+
+    @field_validator("action")
+    @classmethod
+    def _known_action(cls, action: str, info: ValidationInfo) -> str:
+        catalog = _treatment_catalog(info)
+        if catalog is not None and action not in catalog.actions:
+            raise ValueError(f"Unknown action {action}, expected one of {', '.join(sorted(catalog.actions))}")
+        return action
+
+    @field_validator("params", mode="before")
+    @classmethod
+    def _params_of_action(cls, params: Any, info: ValidationInfo) -> Any:
+        if isinstance(params, TreatmentParams):
+            return params
+        catalog = _treatment_catalog(info)
+        action = info.data.get("action")
+        # without a valid action, the action field already reports the error
+        model = catalog.params_model(action) if catalog is not None and action is not None else UncheckedParams
+        try:
+            return model.model_validate(params)
+        except pydantic.ValidationError as e:
+            raise ValueError(_describe_errors(e))
 
 
 class HelmRelease(SpecModel):

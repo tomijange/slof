@@ -2,19 +2,30 @@
 
 import logging
 
+from pydantic import Field
+
 from oxn.common.errors import OrchestratorException
 from oxn.models.treatment import CompileTimeTreatment
+from oxn.models.treatment_params import PodSelectorParams
 from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 logger = logging.getLogger(__name__)
 
 
-class DeploymentScaleTreatment(CompileTimeTreatment):
+class DeploymentScaleParams(PodSelectorParams):
+    """Params of scale_deployment"""
+
+    scale_to: int = Field(ge=0)
+    """The number of replicas while the treatment is in place"""
+
+
+class DeploymentScaleTreatment(CompileTimeTreatment[DeploymentScaleParams]):
     """
-    Will scale a deployment to 0 replicas and back to the original number of replicas.
+    Will scale a deployment to scale_to replicas and back to the original number of replicas.
     """
 
     action = "scale_deployment"
+    Params = DeploymentScaleParams
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -28,11 +39,10 @@ class DeploymentScaleTreatment(CompileTimeTreatment):
 
     def inject(self) -> None:
         super().inject()
-        namespace = self.config.get("namespace")
-        label_selector = self.config.get("label_selector")
-        label = self.config.get("label")
-        scale_to = self.config.get("scale_to")
-        assert scale_to is not None and scale_to >= 0
+        namespace = self.params.namespace
+        label_selector = self.params.label_selector
+        label = self.params.label
+        scale_to = self.params.scale_to
         try:
             assert isinstance(self.orchestrator, KubernetesOrchestrator)
             self.deployment = KubernetesOrchestrator.get_deployment(self.orchestrator, namespace, label_selector, label)
@@ -40,7 +50,7 @@ class DeploymentScaleTreatment(CompileTimeTreatment):
                 self.messages.append(f"Deployment with {label_selector}={label} not found in namespace {namespace}")
                 return
         except OrchestratorException as e:
-            self.messages.append(e.message)
+            self.messages.append(str(e.message))
             return
 
         assert self.deployment.spec
@@ -63,9 +73,9 @@ class DeploymentScaleTreatment(CompileTimeTreatment):
         We have to fetch the deployment again as otherwise there will be an error form the kubernetes API because the deployment object is not up to date.
         """
         super().clean()
-        namespace = self.config.get("namespace")
-        label_selector = self.config.get("label_selector")
-        label = self.config.get("label")
+        namespace = self.params.namespace
+        label_selector = self.params.label_selector
+        label = self.params.label
         try:
             assert isinstance(self.orchestrator, KubernetesOrchestrator)
             self.deployment = KubernetesOrchestrator.get_deployment(self.orchestrator, namespace, label_selector, label)
@@ -73,7 +83,7 @@ class DeploymentScaleTreatment(CompileTimeTreatment):
                 self.messages.append(f"Deployment with {label_selector}={label} not found in namespace {namespace}")
                 return
         except OrchestratorException as e:
-            self.messages.append(e.message)
+            self.messages.append(str(e.message))
             return
         assert self.deployment.metadata
         assert self.deployment.metadata.name
@@ -84,30 +94,6 @@ class DeploymentScaleTreatment(CompileTimeTreatment):
             )
             return
         logger.info(f"Deployment {self.deployment.metadata.name} scaled to {self.replicas_before}")
-
-    def params(self) -> dict:
-        return {
-            "namespace": str,
-            "label_selector": str,
-            "label": str,
-            "scale_to": int,
-        }
-
-    def _validate_params(self) -> bool:
-        """
-        Check if all required parameters are supplied and have the correct type.
-        """
-
-        for key, value in self.params().items():
-            if key not in self.config:
-                self.messages.append(f"Parameter {key} has to be supplied for {self.treatment_type}")
-            if not isinstance(self.config[key], value):
-                self.messages.append(f"Parameter {key} has to be of type {value} for {self.treatment_type}")
-
-        return not self.messages
-
-    def _transform_params(self) -> None:
-        pass
 
     def _validate_orchestrator(self) -> bool:
         return self._orchestrator_is_one_of(["kubernetes"])

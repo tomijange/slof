@@ -3,43 +3,55 @@
 import logging
 import time
 
-from oxn.common.utils import time_string_format_regex, time_string_to_seconds, to_milliseconds, validate_time_string
+from oxn.common.utils import time_string_to_seconds, to_milliseconds
 from oxn.models.treatment import CompileTimeTreatment
+from oxn.models.treatment_params import PodSelectorParams, TimeString
 from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 logger = logging.getLogger(__name__)
 
 
-class KubernetesMetricsExportIntervalTreatment(CompileTimeTreatment):
+class MetricsExportIntervalParams(PodSelectorParams):
+    """Params of kubernetes_otel_metrics_interval"""
+
+    interval: TimeString
+    """The new value of OTEL_METRIC_EXPORT_INTERVAL"""
+
+    @property
+    def interval_ms(self) -> float:
+        return to_milliseconds(time_string_to_seconds(self.interval))
+
+
+class KubernetesMetricsExportIntervalTreatment(CompileTimeTreatment[MetricsExportIntervalParams]):
     """
     Modify the OTEL_METRICS_EXPORT interval for a given container
 
     check rate(otelcol_exporter_sent_metric_points[30s]) to validate the change
 
-    config:
+    params:
         namespace: system-under-evaluation,
         label_selector: app.kubernetes.io/component,
         label: recommendationservice,
         interval: 1s,
     """
 
+    action = "kubernetes_otel_metrics_interval"
+    Params = MetricsExportIntervalParams
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.init_env_value = None
         self.env_name = "OTEL_METRIC_EXPORT_INTERVAL"
-
-    def action(self):
-        return "kubernetes_otel_metrics_interval"
 
     def preconditions(self) -> bool:
         super().preconditions()
         return True
 
     def inject(self) -> None:
-        self.namespace = self.config.get("namespace")
-        self.label_selector = self.config.get("label_selector")
-        self.label = self.config.get("label")
-        self.interval_ms = self.config["interval_ms"]
+        self.namespace = self.params.namespace
+        self.label_selector = self.params.label_selector
+        self.label = self.params.label
+        self.interval_ms = self.params.interval_ms
 
         assert isinstance(self.orchestrator, KubernetesOrchestrator)
 
@@ -93,33 +105,6 @@ class KubernetesMetricsExportIntervalTreatment(CompileTimeTreatment):
             environment_variable_value=self.init_env_value,
         )
         logger.info(f"Environment variable '{self.env_name} reset for deployment '{self.deployment.metadata.name}' to initial value.") """
-
-    def params(self) -> dict:
-        return {
-            "namespace": str,
-            "label_selector": str,
-            "label": str,
-            "interval": str,
-        }
-
-    def _validate_params(self) -> bool:
-        for key, value in self.params().items():
-            if key not in self.config:
-                self.messages.append(f"Parameter {key} has to be supplied")
-            if not isinstance(self.config[key], value):
-                self.messages.append(f"Parameter {key} has to be of type {str(value)}")
-        for key in self.config.items():
-            if key == "interval" and not validate_time_string(self.config[key]):
-                self.messages.append(
-                    f"Value for parameter {key} has to match {time_string_format_regex} for {self.treatment_type}"
-                )
-        return not self.messages
-
-    def _transform_params(self) -> None:
-        """Convert the provided time string into milliseconds"""
-        interval_s = time_string_to_seconds(self.config["interval"])
-        interval_ms = to_milliseconds(interval_s)
-        self.config["interval_ms"] = interval_ms
 
     def _validate_orchestrator(self) -> bool:
         return self._orchestrator_is_one_of(["kubernetes"])

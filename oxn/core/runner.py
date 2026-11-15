@@ -14,27 +14,12 @@ import uuid
 from typing import List
 
 from oxn.common import utils
-from oxn.common.errors import OxnException
 from oxn.common.utils import utc_timestamp
 from oxn.models.experiment_spec import ExperimentSpec
 from oxn.models.orchestrator import Orchestrator
 from oxn.models.treatment import Treatment
 from oxn.observability.observer import Observer
-from oxn.treatments.compile_time import (
-    DeploymentScaleTreatment,
-    KubernetesApplySecurityContextTreatment,
-    KubernetesMetricsExportIntervalTreatment,
-    KubernetesProbabilisticHeadSamplingTreatment,
-    KubernetesPrometheusIntervalTreatment,
-)
-from oxn.treatments.runtime import (
-    EmptyKubernetesTreatment,
-    EmptyTreatment,
-    KubernetesCorruptPacketTreatment,
-    KubernetesKillTreatment,
-    KubernetesNetworkDelayTreatment,
-    KubernetesNetworkPacketLossTreatment,
-)
+from oxn.treatments.registry import TreatmentRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -51,27 +36,12 @@ class ExperimentRunner:
 
     """
 
-    # TODO: make names less ambiguous
-    treatment_keys = {
-        "kubernetes_loss": KubernetesNetworkPacketLossTreatment,
-        "empty": EmptyTreatment,
-        "empty_kubernetes": EmptyKubernetesTreatment,
-        "delay": KubernetesNetworkDelayTreatment,
-        "kubernetes_prometheus_interval": KubernetesPrometheusIntervalTreatment,
-        "kube_probl": KubernetesProbabilisticHeadSamplingTreatment,
-        "kubernetes_otel_metrics_interval": KubernetesMetricsExportIntervalTreatment,
-        "scale_deployment": DeploymentScaleTreatment,
-        "security_context_kubernetes": KubernetesApplySecurityContextTreatment,
-        "kubernetes_kill": KubernetesKillTreatment,
-        "kubernetes_corrupt": KubernetesCorruptPacketTreatment,
-    }
-
     def __init__(
         self,
         orchestrator: Orchestrator,
         config: ExperimentSpec,
         config_filename=None,
-        additional_treatments=None,
+        treatment_registry: TreatmentRegistry | None = None,
         random_treatment_order=False,
     ):
         self.orchestrator = orchestrator
@@ -89,18 +59,16 @@ class ExperimentRunner:
         """Experiment end as UTC unix timestamp in seconds"""
         self.random_treatment_order = random_treatment_order
         """If the treatments should be executed in random order"""
-        self.additional_treatments = additional_treatments if additional_treatments else []
-        """Additional user-supplied treatments"""
+        self.treatment_registry = treatment_registry if treatment_registry is not None else TreatmentRegistry()
+        """The treatments the spec can use, including user-supplied ones"""
         self.observer = Observer(orchestrator=self.orchestrator, config=self.config)
         """Observer for response variables"""
         self.hash: str | None = None
         """SHA-256 of the spec path, None without one"""
         self._compute_hash()
         """Compute unique identifiers for runs and experiment config"""
-        self._extend_treatments()
-        """Populate the treatment_keys class variable with additional user-supplied treatments"""
         self._build_treatments()
-        """Populate the treatment dicts from the config and any user-supplied treatments"""
+        """Populate the treatment dict from the config"""
 
     def __repr__(self):
         return f"ExperimentRunner(config={self.config_filename}, hash={self.short_hash}, run={self.short_id})"
@@ -140,27 +108,9 @@ class ExperimentRunner:
         if self.random_treatment_order:
             random.shuffle(treatment_section)
         for treatment in treatment_section:
-            self.treatments[treatment.name] = self._build_treatment(
-                action=treatment.action, params=treatment.params, name=treatment.name, orchestrator=self.orchestrator
-            )
+            self.treatments[treatment.name] = self.treatment_registry.build(treatment, orchestrator=self.orchestrator)
             logger.debug("Successfully built treatment %s", self.treatments[treatment.name])
         logger.info("Built %s treatments: %s", len(self.treatments), list(self.treatments))
-
-    def _build_treatment(self, action, params, name, orchestrator) -> Treatment:
-        """Build a single treatment from a description"""
-        treatment_class = self.treatment_keys.get(action)
-        if treatment_class is None:
-            raise OxnException(
-                message=f"Error while building treatment {name}",
-                explanation=f"Treatment key {action} does not exist in the treatment library",
-            )
-        instance = treatment_class(config=params, name=name, orchestrator=orchestrator)
-        return instance
-
-    def _extend_treatments(self) -> None:
-        """Extend the treatments the runner knows about with user-supplied treatments"""
-        for treatment in self.additional_treatments:
-            self.treatment_keys |= {treatment.action: treatment}
 
     def _get_runtime_treatments(self) -> List[Treatment]:
         return [treatment for treatment in self.treatments.values() if treatment.is_runtime()]

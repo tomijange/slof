@@ -34,7 +34,7 @@ These modules now receive the model instead of a dict: the engine, both orchestr
 ## What this breaks
 
 - **Specs with extra keys.** A spec that GOXN accepted because it ignored a key now fails to load. Remove or fix the key.
-- **Code that indexes the spec.** Code that reads `config["experiment"][...]` must use attributes, such as `config.experiment.responses`. Treatments are not affected, they still receive their `params` as a dict.
+- **Code that indexes the spec.** Code that reads `config["experiment"][...]` must use attributes, such as `config.experiment.responses`. Treatments are not affected, they still receive their `params` as a dict. [Change 19](19-treatment-params.md#params-models) types the params as well.
 
 ## Tests
 

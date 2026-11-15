@@ -20,6 +20,7 @@ from oxn.models.experiment_spec import ExperimentSpec
 from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 from oxn.reporting.report import Reporter
 from oxn.reporting.store import write_dataframe
+from oxn.treatments.registry import TreatmentRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +78,8 @@ class Engine:
         """A reference to a reporter instance"""
         self.context = Context(treatment_file_path=treatment_file)
         """A reference to a treatment context"""
-        self.additional_treatments = self.context.load_treatment_file()
-        """Additional treatments defined by the user"""
+        self.treatment_registry = TreatmentRegistry(self.context.load_treatment_file())
+        """The built-in treatments and those defined by the user"""
         self.orchestrator = None
         """A reference to an orchestrator instance"""
         self.generator = None
@@ -95,8 +96,8 @@ class Engine:
         self.phase = phase
 
     def load_experiment_specification(self):
-        """Read the experiment specification file and validate it syntactically"""
-        self.spec = load_experiment_specification(self.config)
+        """Read the experiment specification file and validate it syntactically, including the treatment params"""
+        self.spec = load_experiment_specification(self.config, treatments=self.treatment_registry)
         logger.debug(f"Experiment specification {self.config} is valid")
 
     def run(
@@ -118,7 +119,7 @@ class Engine:
             self.runner = ExperimentRunner(
                 config=self.spec,
                 config_filename=self.config,
-                additional_treatments=self.additional_treatments,
+                treatment_registry=self.treatment_registry,
                 random_treatment_order=randomize,
                 orchestrator=self.orchestrator,
             )

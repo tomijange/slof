@@ -12,14 +12,15 @@ import yaml
 
 from oxn.common.errors import OxnException
 from oxn.models.experiment_spec import (
+    TREATMENTS_CONTEXT_KEY,
     ExperimentSpec,
     MetricResponseDescription,
     TraceResponseDescription,
-    TreatmentDescription,
 )
 from oxn.models.orchestrator import Orchestrator
 from oxn.observability.jaeger import Jaeger
 from oxn.observability.prometheus import Prometheus
+from oxn.treatments.registry import TreatmentRegistry
 
 
 class SemanticValidator:
@@ -115,12 +116,6 @@ class SemanticValidator:
         if response.service_name not in self.service_names:
             self.messages.append(f"Jaeger does not know service name {response.name}")
 
-    def validate_treatment(self, treatment_description: TreatmentDescription):
-        """
-        Validate a single treatment description from an experiment specification
-        """
-        raise NotImplementedError
-
     def validate_response(self, response: MetricResponseDescription | TraceResponseDescription):
         """Validate a response variable"""
         # trace/metric is already validated by the spec model
@@ -133,10 +128,6 @@ class SemanticValidator:
         """Validate the response section in the specification"""
         for response in self.experiment_spec.experiment.responses:
             self.validate_response(response=response)
-
-    def validate_treatments(self):
-        for treatment in self.experiment_spec.experiment.treatments:
-            self.validate_treatment(treatment_description=treatment)
 
     def validate(self):
         """Validate the experiment specification"""
@@ -164,14 +155,27 @@ def read_experiment_specification(path: str) -> dict:
             )
 
 
-def validate_syntax(experiment_spec: dict) -> ExperimentSpec:
-    """Validate an experiment specification syntactically and return its typed model"""
+def validate_syntax(
+    experiment_spec: dict, treatments: TreatmentRegistry | None = None, check_treatments: bool = True
+) -> ExperimentSpec:
+    """
+    Validate an experiment specification syntactically and return its typed model
+
+    The action and params of every treatment are checked against treatments, the built-in treatments if it is None.
+    With check_treatments=False they are not checked and the params stay UncheckedParams, for commands that only
+    read other sections.
+    """
+    context = {}
+    if check_treatments:
+        context[TREATMENTS_CONTEXT_KEY] = treatments if treatments is not None else TreatmentRegistry()
     try:
-        return ExperimentSpec.model_validate(experiment_spec)
+        return ExperimentSpec.model_validate(experiment_spec, context=context)
     except pydantic.ValidationError as e:
         raise OxnException(message="Can't validate experiment spec", explanation=str(e))
 
 
-def load_experiment_specification(path: str) -> ExperimentSpec:
-    """Read an experiment specification file and validate it syntactically"""
-    return validate_syntax(read_experiment_specification(path))
+def load_experiment_specification(
+    path: str, treatments: TreatmentRegistry | None = None, check_treatments: bool = True
+) -> ExperimentSpec:
+    """Read an experiment specification file and validate it syntactically, see validate_syntax"""
+    return validate_syntax(read_experiment_specification(path), treatments, check_treatments)

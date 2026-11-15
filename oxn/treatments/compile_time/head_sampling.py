@@ -3,15 +3,34 @@
 import logging
 
 from kubernetes.client.exceptions import ApiException
+from pydantic import Field, field_validator
 
 from oxn.common.errors import OrchestratorException
 from oxn.models.treatment import CompileTimeTreatment
+from oxn.models.treatment_params import TreatmentParams
 from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 logger = logging.getLogger(__name__)
 
 
-class KubernetesProbabilisticHeadSamplingTreatment(CompileTimeTreatment):
+class HeadSamplingParams(TreatmentParams):
+    """Params of kube_probl"""
+
+    sampling_percentage: float = Field(ge=0, le=100)
+    hash_seed: int
+
+    @field_validator("sampling_percentage")
+    @classmethod
+    def _warn_on_high_rates(cls, value: float) -> float:
+        if value > 20:
+            logger.warning(
+                f"Sampling percentage is set to {value}. High sampling rates can lead to high costs, "
+                "performance issues and crashes."
+            )
+        return value
+
+
+class KubernetesProbabilisticHeadSamplingTreatment(CompileTimeTreatment[HeadSamplingParams]):
     """
     Treatment to change the global sampling rate for head-based trace sampling in the OpenTelemetry collector
 
@@ -20,6 +39,9 @@ class KubernetesProbabilisticHeadSamplingTreatment(CompileTimeTreatment):
     otel documentation: https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/probabilisticsamplerprocessor
 
     """
+
+    action = "kube_probl"
+    Params = HeadSamplingParams
 
     def preconditions(self) -> bool:
         """Check that the config exists at the specified location and that Prometheus is running"""
@@ -51,8 +73,6 @@ class KubernetesProbabilisticHeadSamplingTreatment(CompileTimeTreatment):
         return True
 
     def inject(self) -> None:
-        assert isinstance(self.config.get("sampling_percentage"), (int, float))
-        assert self.config.get("hash_seed")
         assert isinstance(self.orchestrator, KubernetesOrchestrator)
 
         self.deployment = self.orchestrator.get_deployment(
@@ -63,10 +83,10 @@ class KubernetesProbabilisticHeadSamplingTreatment(CompileTimeTreatment):
             self.orchestrator.get_otel_collector_probabilistic_sampling_values()
         )
         self.orchestrator.set_otel_collector_probabilistic_sampling_values(
-            sampling_percentage=self.config.get("sampling_percentage"), hash_seed=self.config.get("hash_seed")
+            sampling_percentage=self.params.sampling_percentage, hash_seed=self.params.hash_seed
         )
         logger.info(
-            f"Set otel collectors probabilistic sampling rate {self.initial_sampling_percentage} -> {self.config.get('sampling_percentage')} and hash seed {self.initial_hash_seed} -> {self.config.get('hash_seed')}"
+            f"Set otel collectors probabilistic sampling rate {self.initial_sampling_percentage} -> {self.params.sampling_percentage} and hash seed {self.initial_hash_seed} -> {self.params.hash_seed}"
         )
 
         # TODO: it seams as there might be a way to reload config maps without restarting the pods in some cases. This should be investigated (https://kubernetes.io/docs/concepts/configuration/configmap/#mounted-configmaps-are-updated-automatically)
@@ -78,38 +98,12 @@ class KubernetesProbabilisticHeadSamplingTreatment(CompileTimeTreatment):
         assert isinstance(self.orchestrator, KubernetesOrchestrator)
 
         """  self.orchestrator.set_otel_collector_probabilistic_sampling_values(sampling_percentage=self.initial_sampling_percentage, hash_seed=self.initial_hash_seed)
-        logger.info(f"Reset otel collectors probabilistic sampling rate  {self.config.get('sampling_percentage')} -> {self.initial_sampling_percentage} and hash seed to {self.config.get('hash_seed')} -> {self.initial_hash_seed}")
+        logger.info(f"Reset otel collectors probabilistic sampling rate  {self.params.sampling_percentage} -> {self.initial_sampling_percentage} and hash seed to {self.params.hash_seed} -> {self.initial_hash_seed}")
 
          # TODO: it seams as there might be a way to reload config maps without restarting the pods in some cases. This should be investigated (https://kubernetes.io/docs/concepts/configuration/configmap/#mounted-configmaps-are-updated-automatically)
         self.orchestrator.restart_pods_of_deployment(self.deployment) """
 
         return
 
-    def params(self) -> dict:
-        return {
-            "sampling_percentage": float,
-            "hash_seed": int,
-        }
-
-    def _validate_params(self) -> bool:
-        for key, val in self.params().items():
-            if key in self.config and not isinstance(self.config[key], val):
-                self.messages.append(f"Parameter {key} has to be of type {val} for {self.treatment_type}")
-        for key, value in self.config.items():
-            if key == "sampling_percentage" and not (0 <= self.config[key] <= 100):
-                self.messages.append(f"Parameter {key} has to be between 0 and 100 for {self.treatment_type}")
-            if key == "sampling_percentage" and self.config[key] > 20:
-                logger.warning(
-                    f"Sampling percentage is set to {self.config[key]}. High sampling rates can lead to high costs and performance issues and crashes."
-                )
-        return not self.messages
-
-    def _transform_params(self) -> None:
-        pass
-
     def _validate_orchestrator(self) -> bool:
         return self._orchestrator_is_one_of(["kubernetes"])
-
-    @property
-    def action(self):
-        return "kube_probl"

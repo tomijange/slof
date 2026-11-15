@@ -1,31 +1,34 @@
 """Corrupt network packets of pods with tc netem"""
 
 import logging
-import re
 import time
-from typing import Optional
 
-from oxn.common.utils import time_string_format_regex, time_string_to_seconds, validate_time_string
 from oxn.models.treatment import RuntimeTreatment
+from oxn.models.treatment_params import NetworkParams, PercentString
 from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 logger = logging.getLogger(__name__)
 
 
-class KubernetesCorruptPacketTreatment(RuntimeTreatment):
-    def action(self):
-        return "kubernetes_corrupt"
+class PacketCorruptionParams(NetworkParams):
+    """Params of kubernetes_corrupt, passed on to tc netem corrupt"""
+
+    corrupt_percentage: PercentString
+    corrupt_correlation: PercentString = "0%"
+
+
+class KubernetesCorruptPacketTreatment(RuntimeTreatment[PacketCorruptionParams]):
+    """Corrupt a percentage of the packets of a service"""
+
+    action = "kubernetes_corrupt"
+    Params = PacketCorruptionParams
 
     def preconditions(self) -> bool:
         super().preconditions()
-        # service = self.config.get("service_name")
-        namespace = self.config.get("namespace")
-        label_selector = self.config.get("label_selector")
-        label = self.config.get("label")
+        namespace = self.params.namespace
+        label_selector = self.params.label_selector
+        label = self.params.label
         try:
-            assert namespace
-            assert label_selector
-            assert label
             assert isinstance(self.orchestrator, KubernetesOrchestrator)
             deployment = self.orchestrator.get_deployment(namespace, label_selector, label)
 
@@ -56,21 +59,19 @@ class KubernetesCorruptPacketTreatment(RuntimeTreatment):
         return True
 
     def inject(self) -> None:
-        namespace = self.config.get("namespace")
-        label_selector = self.config.get("label_selector")
-        label = self.config.get("label")
-        interface = self.config.get("interface")
-        duration = self.config.get("duration_seconds")
-        percentage = self.config.get("corrupt_percentage")
-        correlation = self.config.get("corrupt_correlation") or "0%"
+        namespace = self.params.namespace
+        label_selector = self.params.label_selector
+        label = self.params.label
+        duration = self.params.duration_seconds
 
-        assert duration
         assert isinstance(self.orchestrator, KubernetesOrchestrator)
         deployment = self.orchestrator.get_deployment(namespace, label_selector, label)
 
         assert deployment
 
-        result = self.orchestrator.set_network_corruption(deployment, interface, percentage, correlation)
+        result = self.orchestrator.set_network_corruption(
+            deployment, self.params.interface, self.params.corrupt_percentage, self.params.corrupt_correlation
+        )
 
         if not result:
             logger.error(f"Failed to inject packet corruption into pods in {namespace} with {label_selector}={label}.")
@@ -81,59 +82,17 @@ class KubernetesCorruptPacketTreatment(RuntimeTreatment):
         time.sleep(duration)
 
     def clean(self) -> None:
-        namespace = self.config.get("namespace")
-        label_selector = self.config.get("label_selector")
-        label = self.config.get("label")
-        interface = self.config.get("interface")
+        namespace = self.params.namespace
+        label_selector = self.params.label_selector
+        label = self.params.label
         assert isinstance(self.orchestrator, KubernetesOrchestrator)
         deployment = self.orchestrator.get_deployment(namespace, label_selector, label)
         assert deployment
-        result = self.orchestrator.remove_network_corruption(deployment, interface)
+        result = self.orchestrator.remove_network_corruption(deployment, self.params.interface)
         if not result:
             logger.error(f"Failed to remove packet corruption from pods in {namespace} with {label_selector}={label}.")
             return
         logger.info(f"Removed packet corruption from pods in {namespace} with {label_selector}={label}.")
-
-    def params(self) -> dict:
-        return {
-            "namespace": str,
-            "label_selector": str,
-            "label": str,
-            "interface": str,
-            "duration": str,
-            "corrupt_percentage": str,
-            "corrupt_correlation": Optional[str],
-        }
-
-    def _validate_params(self) -> bool:
-        bools = []
-        for key, value in self.params().items():
-            # required params
-            if (
-                key in {"namespace", "label_selector", "label", "duration", "interface", "corrupt_percentage"}
-                and key not in self.config
-            ):
-                self.messages.append(f"Parameter {key} has to be supplied")
-                bools.append(False)
-            # supplied params have correct type
-            if key in self.config and not isinstance(self.config[key], value):
-                self.messages.append(f"Parameter {key} has to be of type {str(value)}")
-        for key, value in self.config.items():
-            if key == "duration":
-                if not validate_time_string(value):
-                    self.messages.append(f"Parameter {key} has to match {time_string_format_regex}")
-                    bools.append(False)
-            if key in {"corrupt_percentage", "corrupt_correlation"}:
-                format_regex = r"^[1-9][0-9]?\%$|^100\%$"
-                if not bool(re.match(format_regex, value)):
-                    self.messages.append(f"Parameter {key} has to match {format_regex}")
-                    bools.append(False)
-        return all(bools)
-
-    def _transform_params(self) -> None:
-        relative_time_string = self.config.get("duration")
-        relative_time_seconds = time_string_to_seconds(relative_time_string)
-        self.config["duration_seconds"] = relative_time_seconds
 
     def _validate_orchestrator(self) -> bool:
         return self._orchestrator_is_one_of(["kubernetes"])
