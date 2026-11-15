@@ -10,9 +10,14 @@ from oxn.treatments.registry import TreatmentRegistry
 
 
 class ExperimentHashTest(unittest.TestCase):
-    def _hash(self, config_filename):
-        runner = mock.MagicMock(config_filename=config_filename, hash=None)
-        ExperimentRunner._compute_hash(runner)
+    def _hash(self, config_filename, variant=None):
+        with (
+            mock.patch("oxn.core.runner.Observer"),
+            mock.patch.object(ExperimentRunner, "_build_treatments"),
+        ):
+            runner = ExperimentRunner(
+                orchestrator=mock.MagicMock(), config=mock.MagicMock(), config_filename=config_filename, variant=variant
+            )
         return runner.hash
 
     def test_the_hash_identifies_the_spec_path(self):

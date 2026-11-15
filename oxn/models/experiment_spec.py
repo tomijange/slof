@@ -44,7 +44,8 @@ def _flatten_entry(key_field: str) -> Callable[[Any], Any]:
 class SpecModel(BaseModel):
     """Base class of all spec sections. Unknown keys are errors, so typos don't get silently ignored."""
 
-    model_config = ConfigDict(extra="forbid")
+    # the docstrings of fields become their descriptions in the JSON schema
+    model_config = ConfigDict(extra="forbid", use_attribute_docstrings=True)
 
 
 class ServiceReference(SpecModel):

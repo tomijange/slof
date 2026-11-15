@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../schema.json
 # Short smoke test of the whole oxn pipeline: deploy, inject a treatment under load, record responses, tear down.
 # The load phase is only 6 minutes, so use it to check a cluster or a code change before a full experiment.
 #

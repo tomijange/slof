@@ -1,32 +1,86 @@
-# Network delay on the recommendation service, with metric export every 1 s.
+# yaml-language-server: $schema=../schema.json
+# Scrape interval x service mesh, with traces in Elasticsearch and metric export every 60 s.
+# Replaces recommendation_k8_base_1m_otel_persistence{,_scrape_5s,_scrape_30s,_istio}.yml.
 #
-# SUE: OpenTelemetry Demo (chart 0.42.6) in system-under-evaluation, Jaeger keeps traces in memory.
+# SUE: OpenTelemetry Demo (chart 0.42.6) in system-under-evaluation.
 # Prometheus and Kepler are not part of the deployment, run `oxn setup` first.
+# Jaeger stores traces in Elasticsearch (k8s/elasticsearch/), which teardown deletes together with its volume.
+#
+# Matrix: 3 scrape intervals x 2 meshes = 6 variants.
+#   - scrape: how often the SUE's Prometheus scrapes its targets, 60s is the reference point.
+#   - mesh: none, or an Istio 1.30.7 mesh with an Envoy sidecar in every pod of system-under-evaluation. Istio
+#     sends its spans to the SUE's collector (deployments/values/values_istiod.yaml), and teardown also removes
+#     Istio and istio-system. The old suite also upgraded kube-prometheus with values_kube_prometheus_istio.yaml to
+#     scrape the sidecars. No response here reads those metrics, so this spec leaves the shared Prometheus alone.
 #
 # Before the load starts:
-#   - OpenTelemetry metric export interval of the recommendation service set to 1s.
+#   - OpenTelemetry metric export interval of the recommendation service set to 60s.
+#   - The SUE's Prometheus scrapes at the matrix interval (rule evaluation every 30s).
 # During the load:
-#   - 45ms +- 45ms of network delay on the recommendation pod (eth0) for 60m.
+#   - An empty treatment observes the SUE for 60m.
 #
-# Load: Locust inside the cluster, 500 users spawned at 50/s against frontend-proxy, for 70m.
+# Load: Locust inside the cluster, 500 users spawned at 50/s against frontend-proxy, for 70m, in every variant.
 # Responses: CPU, Kepler energy (package and DRAM), network and storage I/O of the SUE, frontend p95 latency,
-# recommendations served, sampled traces and Prometheus samples ingested. Also records frontend and
-# recommendation traces from Jaeger.
+# recommendations served, sampled traces and Prometheus samples ingested.
 # The storage responses filter on device /dev/md2, the disk of the ISE cluster node.
+matrix:
+  scrape:
+    5s: {interval: 5s, timeout: 3s}
+    30s: {interval: 30s, timeout: 10s}
+    60s: {interval: 60s, timeout: 3s}
+  mesh:
+    none:
+      namespaces:
+        - name: system-under-evaluation
+      steps: []
+    istio:
+      namespaces:
+        - name: istio-system
+        - name: system-under-evaluation
+          labels: {istio-injection: enabled}
+      steps:
+        - helm:
+            release: istio-base
+            chart: base
+            repo: https://istio-release.storage.googleapis.com/charts
+            version: 1.30.7
+            namespace: istio-system
+            set: {defaultRevision: default}
+        - helm:
+            release: istiod
+            chart: istiod
+            repo: https://istio-release.storage.googleapis.com/charts
+            version: 1.30.7
+            namespace: istio-system
+            values: [deployments/values/values_istiod.yaml]
+        - helm:
+            release: istio-ingressgateway
+            chart: gateway
+            repo: https://istio-release.storage.googleapis.com/charts
+            version: 1.30.7
+            namespace: istio-system
+            # helm --wait would wait forever for a LoadBalancer IP, and the load does not go through the gateway
+            set: {service.type: ClusterIP}
 experiment:
   version: 0.0.1
   orchestrator: kubernetes
   deployment:
     namespaces:
-      - name: system-under-evaluation
+      - ${{ mesh.namespaces }}
     steps:
+      - ${{ mesh.steps }}
+      - manifests:
+          paths: [k8s/elasticsearch/]
+          namespace: system-under-evaluation
+          # Jaeger needs Elasticsearch to accept requests when it starts
+          wait_for: [deployment/elasticsearch]
       - helm:
           release: astronomy-shop
           chart: opentelemetry-demo
           repo: https://open-telemetry.github.io/opentelemetry-helm-charts
           version: 0.42.6
           namespace: system-under-evaluation
-          values: [deployments/values/values_opentelemetry_demo.yaml]
+          values: [deployments/values/values_opentelemetry_demo_persistence.yaml]
   services:
     jaeger:
       name: jaeger
@@ -35,18 +89,6 @@ experiment:
       - {name: prometheus, namespace: system-under-evaluation, target: sue}
       - {name: kube-prometheus-kube-prome-prometheus, namespace: oxn-external-monitoring, target: oxn}
   responses:
-    - frontend_traces:
-        type: trace
-        service_name: frontend
-        left_window: 420s
-        right_window: 120s
-        limit: 30000
-    - recommendation_traces:
-        type: trace
-        service_name: recommendation
-        left_window: 420s
-        right_window: 120s
-        limit: 30000
     - system_CPU:
         type: metric
         metric_name: sum(rate(container_cpu_usage_seconds_total{service="kube-prometheus-kube-prome-kubelet", namespace="system-under-evaluation"}[1m]))
@@ -356,23 +398,23 @@ experiment:
         step: 30
         target: oxn
   treatments:
-    - delay_treatment:
-        action: delay
+    - empty_treatment:
+        action: empty
         params:
-          namespace: system-under-evaluation
-          label_selector: app.kubernetes.io/name
-          label: recommendation
-          delay_time: 45ms
-          delay_jitter: 45ms
           duration: 60m
-          interface: eth0
     - ensure_otel_metric_interval:
         action: kubernetes_otel_metrics_interval
         params:
           namespace: system-under-evaluation
           label_selector: app.kubernetes.io/component
           label: recommendation
-          interval: 1s
+          interval: 60s
+    - prometheus_scrape_interval:
+        action: kubernetes_prometheus_interval
+        params:
+          interval: ${{ scrape.interval }}
+          evaluation_interval: 30s
+          scrape_timeout: ${{ scrape.timeout }}
   sue:
     exclude: [loadgenerator]
     required:

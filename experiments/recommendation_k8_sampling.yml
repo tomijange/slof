@@ -1,19 +1,38 @@
-# Like recommendation_k8_base_1m_otel_persistence.yml, but the SUE's Prometheus scrapes every 5 s.
+# yaml-language-server: $schema=../schema.json
+# Trace sampling rate x trace storage. Replaces recommendation_k8_base_{0,5,10,50}_percent{,_persistence}.yml.
 #
-# SUE: OpenTelemetry Demo (chart 0.42.6) in system-under-evaluation, Jaeger stores traces in Elasticsearch
-# (k8s/elasticsearch/), which teardown deletes together with its volume.
+# SUE: OpenTelemetry Demo (chart 0.42.6) in system-under-evaluation.
 # Prometheus and Kepler are not part of the deployment, run `oxn setup` first.
 #
+# Matrix: 4 sampling rates x 2 trace storages = 8 variants.
+#   - sampling: share of traces the collector keeps, 0.0 is the reference point that drops every trace.
+#   - storage: Jaeger keeps traces in memory, or stores them in Elasticsearch (k8s/elasticsearch/), which teardown
+#     deletes together with its volume.
+#
 # Before the load starts:
-#   - OpenTelemetry metric export interval of the recommendation service set to 60s.
-#   - The SUE's Prometheus scrapes every 5s (timeout 3s, rule evaluation every 30s).
+#   - The collector samples the matrix share of traces (probabilistic head sampling, hash seed 22).
+#   - The SUE's Prometheus scrapes every 60s (timeout 3s, rule evaluation every 30s).
 # During the load:
 #   - An empty treatment observes the SUE for 60m.
 #
-# Load: Locust inside the cluster, 500 users spawned at 50/s against frontend-proxy, for 70m.
+# Load: Locust inside the cluster, 500 users spawned at 50/s against frontend-proxy, for 70m, in every variant.
 # Responses: CPU, Kepler energy (package and DRAM), network and storage I/O of the SUE, frontend p95 latency,
 # recommendations served, sampled traces and Prometheus samples ingested.
 # The storage responses filter on device /dev/md2, the disk of the ISE cluster node.
+matrix:
+  sampling: [0.0, 5.0, 10.0, 50.0]
+  storage:
+    memory:
+      values: deployments/values/values_opentelemetry_demo.yaml
+      steps: []
+    elasticsearch:
+      values: deployments/values/values_opentelemetry_demo_persistence.yaml
+      steps:
+        - manifests:
+            paths: [k8s/elasticsearch/]
+            namespace: system-under-evaluation
+            # Jaeger needs Elasticsearch to accept requests when it starts
+            wait_for: [deployment/elasticsearch]
 experiment:
   version: 0.0.1
   orchestrator: kubernetes
@@ -21,18 +40,15 @@ experiment:
     namespaces:
       - name: system-under-evaluation
     steps:
-      - manifests:
-          paths: [k8s/elasticsearch/]
-          namespace: system-under-evaluation
-          # Jaeger needs Elasticsearch to accept requests when it starts
-          wait_for: [deployment/elasticsearch]
+      # a placeholder that resolves to a list is spliced into the surrounding list
+      - ${{ storage.steps }}
       - helm:
           release: astronomy-shop
           chart: opentelemetry-demo
           repo: https://open-telemetry.github.io/opentelemetry-helm-charts
           version: 0.42.6
           namespace: system-under-evaluation
-          values: [deployments/values/values_opentelemetry_demo_persistence.yaml]
+          values: ["${{ storage.values }}"]
   services:
     jaeger:
       name: jaeger
@@ -350,21 +366,19 @@ experiment:
         step: 30
         target: oxn
   treatments:
+    - probabilistic_head_sampling_rate:
+        action: kube_probl
+        params:
+          sampling_percentage: ${{ sampling }}
+          hash_seed: 22
     - empty_treatment:
         action: empty
         params:
           duration: 60m
-    - ensure_otel_metric_interval:
-        action: kubernetes_otel_metrics_interval
-        params:
-          namespace: system-under-evaluation
-          label_selector: app.kubernetes.io/component
-          label: recommendation
-          interval: 60s
     - prometheus_scrape_interval:
         action: kubernetes_prometheus_interval
         params:
-          interval: 5s
+          interval: 60s
           evaluation_interval: 30s
           scrape_timeout: 3s
   sue:

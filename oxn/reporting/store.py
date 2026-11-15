@@ -112,11 +112,13 @@ def construct_key(experiment_key, run_key, response_key):
     return experiment_key + "/" + run_key + "/" + response_key
 
 
-def write_dataframe(dataframe, experiment_key, run_key, response_key) -> None:
-    """Write a dataframe to the store"""
+def write_dataframe(dataframe, experiment_key, run_key, response_key, metadata: dict | None = None) -> None:
+    """Write a dataframe to the store, with metadata as the attribute metadata of its storer if given"""
     with pd.HDFStore(STORAGE_NAME) as store:
         key = construct_key(experiment_key, run_key, response_key)
         store.put(key=key, value=dataframe)
+        if metadata is not None:
+            store.get_storer(key).attrs.metadata = metadata
         trie = Trie()
         trie.insert(key)
 

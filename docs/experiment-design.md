@@ -1,6 +1,6 @@
 # Experiment design
 
-The `recommendation_*` specs in `experiments/` were written for GOXN's evaluation. Each one changes one part of the observability setup of the OpenTelemetry Demo and records what that change costs in CPU, energy, network traffic and storage. This page explains what the experiments compare, how a run is timed, and which specs to compare with each other.
+The `recommendation_*` specs in `experiments/` go back to GOXN's evaluation. Each variant changes one part of the observability setup of the OpenTelemetry Demo and records what that change costs in CPU, energy, network traffic and storage. This page explains what the experiments compare, how a run is timed, and which variants to compare with each other.
 
 [Experiments](experiments.md) covers the spec format and the `oxn` command. [Deployments](deployments.md) covers what each spec installs. The comment at the top of every spec summarizes that spec.
 
@@ -14,7 +14,7 @@ Observability has a price. Every span the collector keeps, every metric a servic
 - Where Jaeger stores traces
 - Whether a service mesh runs around the SUE
 
-The `delay` specs add a known fault on top of a configuration. Comparing their responses with the matching specs without the delay shows how the fault appears in the data at that sampling rate or export interval. Checking whether an observability configuration still reveals a fault is the question OXN was originally built for.
+The fault spec adds a known fault on top of a configuration. Comparing its `fault=delay` variants with the `fault=none` variants of the same configuration shows how the fault appears in the data at that sampling rate or export interval. Checking whether an observability configuration still reveals a fault is the question OXN was originally built for.
 
 ## What gets measured
 
@@ -52,7 +52,7 @@ flowchart TB
 
 | Marker | Factor | How it is set | Levels in the shipped specs |
 |---|---|---|---|
-| (1) | Trace sampling | `kube_probl` treatment, sets the collector's probabilistic sampler | 0 %, 1 % (the default in the Helm values), 5 %, 10 %, 50 % |
+| (1) | Trace sampling | `kube_probl` treatment, sets the collector's probabilistic sampler | 0 %, 1 % (the default in the Helm values, only in the fault spec), 5 %, 10 %, 50 % |
 | (2) | Metric export interval | `kubernetes_otel_metrics_interval` treatment, sets `OTEL_METRIC_EXPORT_INTERVAL` on a Deployment | 1 s, 30 s, 60 s (the SDK default) |
 | (3) | Trace storage | Deployment setup: in-memory Jaeger, or Jaeger backed by Elasticsearch | In memory, Elasticsearch |
 | (4) | Fault | `delay` treatment, `tc netem` on the recommendation pod | None, 45 ms ± 45 ms for 60 minutes |
@@ -121,91 +121,85 @@ gantt
 
 ## The specs and what to compare
 
-Every spec is named `recommendation_k8_<setup>_<variant>.yml`. The diagram drops the `recommendation_k8_` prefix. An arrow points from a spec to the spec it is compared with, and the arrow's label names the one factor that differs. Dotted arrows connect specs that differ in what they record, not in what they change. The fault group repeats the specs its delay specs are compared with.
+The experiments are five specs, each with a [matrix](experiments.md#matrix). The variants of a spec share everything except their levels, so compare variants of the same spec with each other. `oxn plan <spec>` lists them.
 
-```mermaid
-flowchart LR
-    subgraph sampling["Trace sampling"]
-        s0["base_0_percent"]
-        s5["base_5_percent"]
-        s10["base_10_percent"]
-        s50["base_50_percent"]
-        s5p["base_5_percent_persistence"]
-        s10p["base_10_percent_persistence"]
-        s50p["base_50_percent_persistence"]
-        s10m["base_10_percent_minimal"]
-        s50m["base_50_percent_minimal"]
-        s5 -->|"5 % vs 0 %"| s0
-        s10 -->|"10 % vs 0 %"| s0
-        s50 -->|"50 % vs 0 %"| s0
-        s5p -->|Elasticsearch| s5
-        s10p -->|Elasticsearch| s10
-        s50p -->|Elasticsearch| s50
-        s10m -.->|fewer responses| s10
-        s50m -.->|fewer responses| s50
-    end
-    subgraph metrics["Metric export interval"]
-        m60["base_1m_otel"]
-        m1["base_1s_otel"]
-        m30["base_30s_otel"]
-        m60p["base_1m_otel_persistence"]
-        m1p["base_1s_otel_persistence"]
-        m30p["base_30s_otel_persistence"]
-        m1m["base_1s_otel_minimal"]
-        m1 -->|"1 s vs 60 s"| m60
-        m30 -->|"30 s vs 60 s"| m60
-        m1p -->|"1 s vs 60 s"| m60p
-        m30p -->|"30 s vs 60 s"| m60p
-        m60p -->|Elasticsearch| m60
-        m1m -.->|"only recommendation<br/>at 1 s, fewer responses"| m1
-        sc5["base_1m_otel_persistence_scrape_5s"] -->|"scrape 5 s vs 60 s"| m60p
-        sc30["base_1m_otel_persistence_scrape_30s"] -->|"scrape 30 s vs 60 s"| m60p
-        ist["base_1m_otel_persistence_istio"] -->|Istio| m60p
-    end
-    subgraph fault["Fault: 45 ms delay on recommendation"]
-        d5["delay_5_percent"] -->|delay| d5ref["base_5_percent"]
-        d10["delay_10_percent"] -->|delay| d10ref["base_10_percent"]
-        d1m["delay_1m_otel"] -->|"delay, no treatments<br/>besides it"| d1mref["base_1m_otel"]
-        d1s["delay_1s_otel"] -->|"delay, more responses"| d1sref["base_1s_otel_minimal"]
-    end
-```
+| Spec | Axes and levels | Variants | Compare against |
+|---|---|---|---|
+| `recommendation_k8_sampling.yml` | `sampling`: 0.0, 5.0, 10.0, 50.0. `storage`: memory, elasticsearch | 8 | `sampling=0.0` of the same storage, `storage=memory` of the same rate |
+| `recommendation_k8_metric_export.yml` | `export_interval`: 1s, 30s, 60s. `storage`: memory, elasticsearch | 6 | `export_interval=60s` of the same storage |
+| `recommendation_k8_scrape_mesh.yml` | `scrape`: 5s, 30s, 60s. `mesh`: none, istio | 6 | `scrape=60s` of the same mesh, `mesh=none` of the same interval |
+| `recommendation_k8_fault.yml` | `fault`: none, delay. `telemetry`: defaults, sampling_5, sampling_10, export_1s | 8 | `fault=none` of the same telemetry |
+| `recommendation_k8_minimal.yml` | `telemetry`: sampling_10, sampling_50, export_1s | 3 | The matching variants of the other specs, for fewer responses |
+
+Every variant deploys the SUE from scratch, runs a 60 minute runtime treatment under 70 minutes of load, and records the same responses as the other variants of its spec. A run of all five specs is 31 runs, about 36 hours of load. Each spec's header comment describes its axes.
 
 ### Trace sampling
 
-`base_0_percent` is the reference point: the collector drops every trace, so tracing costs only what the SDKs and the collector spend before sampling. `base_5_percent`, `base_10_percent` and `base_50_percent` show how the cost grows with the share of traces kept. The `_persistence` variants store the kept traces in Elasticsearch, so comparing each with its in-memory twin shows the cost of persisting traces.
+`recommendation_k8_sampling.yml` sets the collector's probabilistic head sampler to the `sampling` share, with hash seed 22. `sampling=0.0` is the reference point: the collector drops every trace, so tracing costs only what the SDKs and the collector spend before sampling. The other levels show how the cost grows with the share of traces kept. `storage=elasticsearch` stores the kept traces in Elasticsearch, so comparing it with `storage=memory` at the same rate shows the cost of persisting traces. All variants set the SUE's Prometheus to scrape every 60 s with rule evaluation every 30 s.
 
 ### Metric export interval
 
-`base_1m_otel` sets the recommendation service to 60 s. The other services do not set `OTEL_METRIC_EXPORT_INTERVAL` either, so they use the SDK default of 60 s, and every service exports once a minute. `base_30s_otel` and `base_1s_otel` set all 18 instrumented services to 30 s and 1 s. More frequent exports mean more requests to the collector, more samples in the SUE's Prometheus, and more data on disk.
+`recommendation_k8_metric_export.yml` sets `OTEL_METRIC_EXPORT_INTERVAL` on all 18 instrumented services to the `export_interval`. 60 s is the SDK default and the reference point. Setting it explicitly restarts the same 18 pods in every variant, so the restarts do not differ between levels. More frequent exports mean more requests to the collector, more samples in the SUE's Prometheus, and more data on disk. `storage` is the same axis as in the sampling spec.
 
 ### Scrape interval
 
-The two `_scrape_` specs change how often the SUE's Prometheus scrapes its targets, against the 60 s of `base_1m_otel_persistence`. The response `prometheus_scrape_amount` counts the samples Prometheus ingests, so it shows the effect directly.
+`recommendation_k8_scrape_mesh.yml` changes how often the SUE's Prometheus scrapes its targets: 5 s and 60 s with a 3 s timeout, 30 s with a 10 s timeout, and rule evaluation every 30 s. Traces go to Elasticsearch and the recommendation service exports metrics every 60 s. The response `prometheus_scrape_amount` counts the samples Prometheus ingests, so it shows the effect directly.
 
 ### Service mesh
 
-`base_1m_otel_persistence_istio` runs the same setup as `base_1m_otel_persistence` with an Envoy sidecar in every SUE pod. The difference is the cost of the mesh. Istio also sends its own spans to the SUE's collector. The spec has no `sampling_rates` response.
+`mesh=istio` in the same spec runs the SUE with an Envoy sidecar in every pod, from Istio 1.30.7 in `istio-system`. Comparing it with `mesh=none` at the same scrape interval gives the cost of the mesh. Istio also sends its own spans to the SUE's collector.
 
 ### Fault
 
-The `delay` specs add 45 ms ± 45 ms of latency on the recommendation pod for the 60 minutes of the runtime treatment. Besides the usual responses, they record frontend and recommendation traces from Jaeger, up to 30000 traces each. The delay should show up in those spans and in `latency_frontend_95_percentile`. Comparing the `delay` specs with each other shows how sampling at 5 % or 10 %, or exporting metrics every 1 s, changes what the data reveals about the fault.
+`fault=delay` in `recommendation_k8_fault.yml` adds 45 ms ± 45 ms of latency on the recommendation pod for the 60 minutes of the runtime treatment, `fault=none` runs an empty treatment instead. The `telemetry` axis sets what the SUE observes:
+
+| Level | Treatments before the load |
+|---|---|
+| `defaults` | None: 1 % sampling from the Helm values, metric export every 60 s |
+| `sampling_5`, `sampling_10` | Head sampling at 5 % or 10 % |
+| `export_1s` | Metric export every 1 s for the recommendation service |
+
+Besides the usual responses, all variants record frontend and recommendation traces from Jaeger, up to 30000 traces each. The delay should show up in those spans and in `latency_frontend_95_percentile`. Comparing `fault=delay` with `fault=none` at the same telemetry level shows how the fault appears in the data, and comparing the levels shows how sampling or exporting metrics every 1 s changes what the data reveals.
 
 ### Minimal specs
 
-The `_minimal` specs have the treatments of their full twins but record only three cumulative counters: container energy, network bytes sent and storage I/O of the SUE. GOXN added them as "experiments with only the needed set of responses" (commit `931d465`). A cumulative counter gives the total for any period as its last value minus its first value.
+`recommendation_k8_minimal.yml` records only three cumulative counters: container energy, network bytes sent and storage I/O of the SUE. Its storage response reads every device, not only `/dev/md2`. GOXN added these as "experiments with only the needed set of responses" (commit `931d465`). A cumulative counter gives the total for any period as its last value minus its first value. `export_1s` sets only the recommendation service to 1 s, not all 18 services as in the metric export spec.
 
 ### Where the comparisons are not exact
 
 | Comparison | Difference besides the factor |
 |---|---|
-| `base_0_percent` against `base_5/10/50_percent` | `base_0_percent` also sets the SUE's Prometheus to rule evaluation every 30 s. The others keep the chart default of 1 m. Both scrape every 60 s. |
-| `base_30s_otel*` against `base_1m_otel*` and `base_1s_otel*` | `base_30s_otel*` leaves the scrape settings at the chart default, the others set them explicitly. The scrape interval is 60 s either way, but rule evaluation differs (1 m vs 30 s). |
-| `base_1s_otel_minimal` against `base_1s_otel` | Only the recommendation service exports every 1 s, not all 18 services |
-| `delay_1m_otel` against `base_1m_otel` | `delay_1m_otel` sets neither the export interval nor the scrape interval. The values match the defaults, but the specs do not restart the same pods before the load. |
-| `delay_1s_otel` against `base_1s_otel_minimal` | The delay spec records all responses, the minimal spec only three |
-| `base_0_percent` | Has no `_persistence` twin |
+| Variants of different specs | They are not designed to be compared. `export_interval=60s,storage=elasticsearch` and `scrape=60s,mesh=none` run the same setup, except that the first sets all 18 services to 60 s and the second only the recommendation service. |
+| `recommendation_k8_fault.yml` against the other specs | The fault spec does not set the scrape interval, and records the trace responses |
+| `recommendation_k8_minimal.yml` against the other specs | Fewer responses, and `export_1s` only for the recommendation service |
 
-Compile-time treatments restart the pods they change, so the restarts are part of each comparison too. Comparing only rows labelled with the runtime treatment leaves them out.
+Compile-time treatments restart the pods they change, so the restarts are part of each comparison too. Within a spec, all variants restart the same pods, except for the `telemetry` axes, whose levels set different treatments. Comparing only rows labelled with the runtime treatment leaves the restarts out.
+
+### Specs before the matrix
+
+Up to [change 22](changes/22-matrix-specs.md), every variant was its own file. Data in `store.h5` from that time is stored under the old file names, new data under the spec and variant:
+
+| Old spec | Spec and variant now | Differs from the old spec |
+|---|---|---|
+| `recommendation_k8_base_0_percent.yml` | `recommendation_k8_sampling.yml[sampling=0.0,storage=memory]` | |
+| `recommendation_k8_base_5_percent.yml` | `recommendation_k8_sampling.yml[sampling=5.0,storage=memory]` | Also sets the scrape interval |
+| `recommendation_k8_base_10_percent.yml` | `recommendation_k8_sampling.yml[sampling=10.0,storage=memory]` | Also sets the scrape interval |
+| `recommendation_k8_base_50_percent.yml` | `recommendation_k8_sampling.yml[sampling=50.0,storage=memory]` | Also sets the scrape interval |
+| `recommendation_k8_base_{5,10,50}_percent_persistence.yml` | `recommendation_k8_sampling.yml[sampling=…,storage=elasticsearch]` | |
+| `recommendation_k8_base_1s_otel.yml` | `recommendation_k8_metric_export.yml[export_interval=1s,storage=memory]` | |
+| `recommendation_k8_base_30s_otel.yml` | `recommendation_k8_metric_export.yml[export_interval=30s,storage=memory]` | Also sets the scrape interval |
+| `recommendation_k8_base_1m_otel.yml` | `recommendation_k8_metric_export.yml[export_interval=60s,storage=memory]` | Sets all 18 services to 60 s, not only recommendation |
+| `recommendation_k8_base_1s_otel_persistence.yml` | `recommendation_k8_metric_export.yml[export_interval=1s,storage=elasticsearch]` | |
+| `recommendation_k8_base_30s_otel_persistence.yml` | `recommendation_k8_metric_export.yml[export_interval=30s,storage=elasticsearch]` | Also sets the scrape interval |
+| `recommendation_k8_base_1m_otel_persistence.yml` | `recommendation_k8_scrape_mesh.yml[scrape=60s,mesh=none]` | |
+| `recommendation_k8_base_1m_otel_persistence_scrape_{5s,30s}.yml` | `recommendation_k8_scrape_mesh.yml[scrape=…,mesh=none]` | |
+| `recommendation_k8_base_1m_otel_persistence_istio.yml` | `recommendation_k8_scrape_mesh.yml[scrape=60s,mesh=istio]` | Also records `sampling_rates` |
+| `recommendation_k8_delay_5_percent.yml` | `recommendation_k8_fault.yml[fault=delay,telemetry=sampling_5]` | |
+| `recommendation_k8_delay_10_percent.yml` | `recommendation_k8_fault.yml[fault=delay,telemetry=sampling_10]` | |
+| `recommendation_k8_delay_1m_otel.yml` | `recommendation_k8_fault.yml[fault=delay,telemetry=defaults]` | |
+| `recommendation_k8_delay_1s_otel.yml` | `recommendation_k8_fault.yml[fault=delay,telemetry=export_1s]` | |
+| `recommendation_k8_base_{10,50}_percent_minimal.yml` | `recommendation_k8_minimal.yml[telemetry=sampling_{10,50}]` | |
+| `recommendation_k8_base_1s_otel_minimal.yml` | `recommendation_k8_minimal.yml[telemetry=export_1s]` | |
 
 ## Responses
 
@@ -223,12 +217,12 @@ All responses are Prometheus range queries, except the trace responses. Rates ar
 | Storage | `cadvisor_storage_usage_*` | Bytes read from and written to `/dev/md2`, the disk of the ISE cluster node, per app label or per namespace. The `_writes_` response counts writes only. | bytes per second |
 | Service level | `latency_frontend_95_percentile`, `recommendations_total` | 95th percentile of the frontend's outgoing request duration, and recommendations served in the last 3 minutes | seconds, count |
 | Observability pipeline | `sampling_rates`, `prometheus_scrape_amount` | Traces the sampler kept and dropped (label `sampled`), and samples the SUE's Prometheus ingested | count |
-| Traces | `frontend_traces`, `recommendation_traces` | Spans from Jaeger, only in the `delay` specs | one row per span |
+| Traces | `frontend_traces`, `recommendation_traces` | Spans from Jaeger, only in `recommendation_k8_fault.yml` | one row per span |
 
 In Kepler responses, "joules" without a zone means CPU package plus DRAM. Kepler 0.11 exports neither a total nor an "other" zone. The queries rebuild the label names of older Kepler versions, such as `container_namespace`, so the notebooks in `evaluation/` read the data of new runs too.
 
 ## Running the experiments
 
 - **Cluster.** The specs are sized for the ISE cluster. They request about 35 GiB of memory, and the storage responses read the ISE node's disk. For a smaller cluster, see [Small clusters](deployments.md#small-clusters). Do not report numbers from such a run.
-- **Repetitions.** Each spec describes one run. `--times N` repeats it, with a fresh deployment and teardown for every run. `--randomize` only changes the order of treatments within a run, not the order of specs.
-- **Duration.** One run of a `recommendation_*` spec takes about 70 minutes of load, plus deployment and teardown. A full set of specs takes more than a day.
+- **Repetitions.** Each spec describes one run, or one per variant of its [matrix](experiments.md#matrix). `--times N` repeats them in N rounds, each of which runs every variant once, with a fresh deployment and teardown for every run. Interleaving keeps slow changes of the cluster from favouring the variants that run first. `--randomize-variants` shuffles the variants in every round, `--randomize` only the treatments within a run. Separate specs still run one after the other.
+- **Duration.** One run of a `recommendation_*` spec takes about 70 minutes of load, plus deployment and teardown. All five specs take about 36 hours of load. `oxn plan <spec> --times N` prints the load time of a spec and its variants.

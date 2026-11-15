@@ -12,13 +12,31 @@ oxn experiments/test.yml --report reports/
 | Option | Purpose |
 |---|---|
 | `--report DIR` | Directory for `report_<timestamp>.yaml`. It must exist. The engine needs this option even though `--help` lists it as optional. |
-| `--times N` | Run the experiment N times, default 1 |
+| `--times N` | Run every variant of the experiment N times, default 1. See [Running a matrix](#running-a-matrix) |
 | `--randomize` | Run treatments in random order instead of spec order |
+| `--only AXIS=LEVEL` | Only run the variants of the [matrix](#matrix) with this level. Repeatable |
+| `--randomize-variants` | Run the variants in a new random order in every round |
+| `--fail-fast` | Stop at the first failed run instead of tearing it down and starting the next one |
 | `--extend FILE` | Load additional treatments from a Python file |
 | `--timeout T` | How long to wait for the SUE to become ready, default `1m` |
 | `--keep-sue` | Skip teardown after the experiment |
 | `--loglevel LEVEL` | `debug`, `info`, `warning`, `error` or `critical`, default `info` |
 | `--logfile FILE` | Also write logs to a file |
+
+`oxn` exits with status 1 if a run failed or was interrupted.
+
+`oxn plan <spec>` reads and checks a spec like a run would, without touching the cluster, and lists its runs with the load time:
+
+```text
+$ oxn plan experiments/recommendation_k8_sampling.yml --times 2
+experiments/recommendation_k8_sampling.yml: 8 variants x 2 runs = 16 runs, 18h40m of load plus deployment and teardown
+  sampling=0.0,storage=memory          1h10m
+  sampling=0.0,storage=elasticsearch   1h10m
+  ...
+Every round runs each variant once, in this order, 2 rounds
+```
+
+It takes `--only`, `--times` and `--extend` like a run. `--print` also prints the spec of every variant with its placeholders filled in.
 
 ## Spec structure
 
@@ -79,6 +97,92 @@ experiment:
 - **`responses`** are the values to record. `left_window` and `right_window` set how far the observation extends before and after a treatment.
 - **`treatments`** run in the listed order unless you pass `--randomize`. Each one has a name, an `action` and `params`, see [Treatments](#treatments).
 - **`loadgen`** configures [Locust](tools/locust.md). With `target` set, `oxn` runs Locust inside the cluster.
+
+## Matrix
+
+A spec can describe several experiments that differ in a few values. The optional `matrix` section, next to `experiment`, lists the values to compare as axes and their levels. `oxn` runs one variant for every combination of levels, with the `${{ ... }}` placeholders in the `experiment` section filled in. This is the matrix of `experiments/recommendation_k8_sampling.yml`, [Experiment design](experiment-design.md#the-specs-and-what-to-compare) describes the others:
+
+```yaml
+matrix:
+  # a list: the values themselves are the levels
+  sampling: [0.0, 5.0, 10.0, 50.0]
+  # a mapping: the keys name the levels, the values can be any YAML
+  storage:
+    memory:
+      values: deployments/values/values_opentelemetry_demo.yaml
+      steps: []
+    elasticsearch:
+      values: deployments/values/values_opentelemetry_demo_persistence.yaml
+      steps:
+        - manifests:
+            paths: [k8s/elasticsearch/]
+            namespace: system-under-evaluation
+            wait_for: [deployment/elasticsearch]
+experiment:
+  deployment:
+    steps:
+      - ${{ storage.steps }}
+      - helm:
+          release: astronomy-shop
+          ...
+          values: ["${{ storage.values }}"]
+  treatments:
+    - probabilistic_head_sampling_rate:
+        action: kube_probl
+        params:
+          sampling_percentage: ${{ sampling }}
+          hash_seed: 22
+```
+
+This spec has 4 x 2 combinations, so 8 variants.
+
+### Axes and levels
+
+- **List.** The items are the levels: numbers, strings or booleans. `${{ sampling }}` is the item, with its type, so `sampling_percentage` gets the number `10.0`.
+- **Mapping.** The keys name the levels, and the values can be anything, also lists and mappings. `${{ storage }}` is the whole value of the level, `${{ storage.values }}` one key of it.
+- **Names.** Axis names are letters, digits and `_`. Level names, and the text of list levels, may only contain letters, digits and `_ . + -`, because they become part of the variant id. For other values, such as `5 %`, use a mapping.
+
+`oxn` validates the section with pydantic. Every axis has to be used by a placeholder. Variants run in the order of the axes and their levels. Every combination runs: for a partial grid, split the spec or select variants with `--only`.
+
+### Placeholders
+
+- **A whole value** is replaced by the value of the level, with its type: `sampling_percentage: ${{ sampling }}`.
+- **A list item** that resolves to a list is spliced into the surrounding list: `- ${{ storage.steps }}` adds no step for `memory` and one for `elasticsearch`.
+- **Part of a string** is replaced by the text of the value, which then has to be a number, string or boolean: `metric_name: rate(...{pod=~"${{ service }}.*"}[90s])`.
+- **Inside `{...}` or `[...]`** a placeholder needs quotes, otherwise YAML reads its braces as a mapping and the spec is invalid. The quotes do not change the type: `values: ["${{ storage.values }}"]` and `{sampling_percentage: "${{ sampling }}"}` work.
+- Placeholders are not filled in keys, which is an error, comments or the `matrix` section itself.
+
+`oxn` expands the matrix and checks every selected variant before it deploys anything. An error names the variant, for example `Can't validate variant sampling=10.0,storage=memory of experiments/x.yml`, and an unknown axis or key names the place of the placeholder.
+
+### Running a matrix
+
+`--times N` runs N rounds. Each round runs every variant once, in the order of the matrix, or in a new random order with `--randomize-variants`. Interleaving the variants spreads slow changes of the cluster, such as other tenants or a filling disk, over all variants, instead of adding them to the variants that run last. Every run deploys and tears down its own SUE.
+
+`--only AXIS=LEVEL` picks variants, for example to repeat a failed one. The level is written as in the variant id, so `sampling=10.0`, not `sampling=10`. Levels of the same axis are alternatives and different axes must all match: `--only sampling=5.0 --only sampling=10.0 --only storage=memory` runs two variants.
+
+A failed run is torn down, and the next run starts. At the end, `oxn` lists the failed runs. With `--fail-fast` it stops at the first one. If tearing down a failed run fails, `oxn` stops, so the next run does not start on a broken cluster.
+
+`oxn deploy` and `oxn teardown` take `--only` too. They need it when the selected variants deploy different things, as `memory` and `elasticsearch` above do.
+
+A spec without `matrix` is a single variant, and runs as before.
+
+## Editor support
+
+`schema.json` in the root of the repository is a JSON schema of experiment specs. With the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml) by Red Hat, VS Code uses it for completion, hover text and checks while you type. Every spec in `experiments/` names it in its first line:
+
+```yaml
+# yaml-language-server: $schema=../schema.json
+```
+
+Add the same line to a new spec, with the path relative to the spec. The schema covers:
+
+- **Sections and fields** of the spec model, with the docstrings of the fields as hover text, and the `- name: {...}` form of responses, treatments and deployment steps.
+- **Treatments.** `action` completes to the registered actions, and `params` to the params of the chosen action.
+- **The matrix.** The `matrix` section, and a `${{ ... }}` placeholder in place of any value or list item.
+
+`oxn schema` writes the file again, and `make schema` does the same. Run it after changing the spec model or a treatment, a unit test fails while the file is out of date. `oxn schema --extend FILE` adds own treatments, and `--output PATH` writes somewhere else, `-` to stdout.
+
+`oxn` itself checks specs with the spec model, not with the schema. The schema is a little more lenient: it accepts a placeholder in every field, also where the matrix later fills in a wrong type, and checks time strings and percentages only by their form.
 
 ## Treatments
 
@@ -201,7 +305,8 @@ class RevisionHistoryTreatment(KubernetesTreatment[RevisionParams], CompileTimeT
 
 ## Results
 
-- **Report:** `reports/report_<timestamp>.yaml` holds, for each run, how every treatment and response interact, including the statistical test results, along with the load generation statistics. Its `experiment_key` is the first eight hex digits of the SHA-256 of the spec path as given to `oxn`, so all runs of one spec share it.
-- **Response data:** `store.h5` in the working directory holds the recorded data as dataframes.
+- **Report:** `reports/report_<timestamp>.yaml` holds, for each run, how every treatment and response interact, including the statistical test results, along with the load generation statistics. For a variant of a matrix, the run also lists its `variant` id and its `factors`, the level of every axis, for example `{sampling: 10.0, storage: elasticsearch}`. `oxn` writes the report after every run, so an interrupted series keeps the finished runs.
+- **Response data:** `store.h5` in the working directory holds the recorded data as dataframes, under `<experiment key>/<run id>/<response>`. The experiment key is the spec path as given to `oxn`, followed by the variant id in brackets for a spec with a matrix: `experiments/x.yml[sampling=10.0,storage=memory]`. Each dataframe carries the spec, variant, factors and run id in `store.get_storer(key).attrs.metadata`, so the evaluation can group runs by factor instead of by file name.
+- **Experiment hash:** the first eight hex digits of the SHA-256 of the experiment key. All runs of one spec, or of one variant, share it.
 
 Both are ignored by git.

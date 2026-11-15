@@ -1,16 +1,48 @@
-# Trace sampling at 10 %, recording only cumulative energy, network and storage counters.
+# yaml-language-server: $schema=../schema.json
+# Three settings, recording only cumulative energy, network and storage counters.
+# Replaces recommendation_k8_base_{10_percent,50_percent,1s_otel}_minimal.yml.
 #
-# SUE: OpenTelemetry Demo (chart 0.42.6) in system-under-evaluation, Jaeger keeps traces in memory.
+# SUE: OpenTelemetry Demo (chart 0.42.6) in system-under-evaluation.
 # Prometheus and Kepler are not part of the deployment, run `oxn setup` first.
+# Jaeger keeps traces in memory.
+#
+# Matrix: 3 telemetry settings = 3 variants.
+#   - telemetry: head sampling at 10 % or 50 % (hash seed 22), or metric export every 1s for the recommendation
+#     service.
 #
 # Before the load starts:
-#   - The collector samples 10 % of traces (probabilistic head sampling, hash seed 22).
+#   - The treatment of the telemetry setting.
 # During the load:
 #   - An empty treatment observes the SUE for 60m.
 #
-# Load: Locust inside the cluster, 500 users spawned at 50/s against frontend-proxy, for 70m.
+# Load: Locust inside the cluster, 500 users spawned at 50/s against frontend-proxy, for 70m, in every variant.
 # Responses: only three cumulative ones, Kepler energy per container, network bytes sent and storage I/O of
 # the SUE.
+matrix:
+  telemetry:
+    sampling_10:
+      treatments:
+        - probabilistic_head_sampling_rate:
+            action: kube_probl
+            params:
+              sampling_percentage: 10.0
+              hash_seed: 22
+    sampling_50:
+      treatments:
+        - probabilistic_head_sampling_rate:
+            action: kube_probl
+            params:
+              sampling_percentage: 50.0
+              hash_seed: 22
+    export_1s:
+      treatments:
+        - ensure_otel_metric_interval:
+            action: kubernetes_otel_metrics_interval
+            params:
+              namespace: system-under-evaluation
+              label_selector: app.kubernetes.io/component
+              label: recommendation
+              interval: 1s
 experiment:
   version: 0.0.1
   orchestrator: kubernetes
@@ -55,11 +87,7 @@ experiment:
         step: 30
         target: oxn
   treatments:
-    - probabilistic_head_sampling_rate:
-        action: kube_probl
-        params:
-          sampling_percentage: 10.0
-          hash_seed: 22
+    - ${{ telemetry.treatments }}
     - empty_treatment:
         action: empty
         params:

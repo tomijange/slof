@@ -73,7 +73,7 @@ python -m pytest oxn/tests/unit/test_deployment.py oxn/tests/unit/test_installer
 
 ## Lint and format
 
-Ruff lints and formats the Python code and yamllint checks the YAML. Both are Python packages, as is the type checker below. Install them once, with the virtual environment active:
+Ruff lints and formats the Python code and yamllint checks the YAML. Both are Python packages, as is the type checker below. `requirements-dev.txt` also holds `jsonschema`, which the tests of the [spec schema](experiments.md#editor-support) use. Install them once, with the virtual environment active:
 
 ```bash
 pip install -r requirements-dev.txt
@@ -103,4 +103,4 @@ ty check
 
 ty reads the installed packages from the active virtual environment, so install `oxn` with `pip install -e .` first. Otherwise every import of `kubernetes`, `pandas` or `pydantic` is an error. The settings are under `[tool.ty]` in `pyproject.toml`: ty checks against Python 3.10, the oldest version `oxn` supports, and skips `evaluation/`, whose scripts and notebooks need packages that `oxn` does not install.
 
-In VS Code, the [ty extension](https://marketplace.visualstudio.com/items?itemName=astral-sh.ty) shows the same findings while you type.
+In VS Code, the [ty extension](https://marketplace.visualstudio.com/items?itemName=astral-sh.ty) shows the same findings while you type. For experiment specs, see [Editor support](experiments.md#editor-support).

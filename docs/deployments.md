@@ -4,13 +4,13 @@ The `deployment` section of an experiment spec describes the SUE and its observa
 
 ## Shipped setups
 
-Every spec in `experiments/` has a `deployment` section, in one of three setups. A comment at the top of each spec says what it measures and which setup it uses.
+Every spec in `experiments/` has a `deployment` section, in one of three setups. A comment at the top of each spec says what it measures and which setup each variant uses.
 
-| Setup | Specs | Deploys |
+| Setup | Specs and variants | Deploys |
 |---|---|---|
-| In-memory Jaeger | `test.yml`, `recommendation_*` without `persistence` in the name | The SUE with `values_opentelemetry_demo.yaml` |
-| Elasticsearch | `recommendation_*_persistence*` | `k8s/elasticsearch/`, then the SUE with `values_opentelemetry_demo_persistence.yaml` |
-| Istio | `recommendation_k8_base_1m_otel_persistence_istio.yml` | Istio in `istio-system`, sidecar injection on `system-under-evaluation`, then the Elasticsearch setup |
+| In-memory Jaeger | `test.yml`, `recommendation_k8_fault.yml`, `recommendation_k8_minimal.yml`, `storage=memory` of `recommendation_k8_sampling.yml` and `recommendation_k8_metric_export.yml` | The SUE with `values_opentelemetry_demo.yaml` |
+| Elasticsearch | `storage=elasticsearch` of the same two specs, `mesh=none` of `recommendation_k8_scrape_mesh.yml` | `k8s/elasticsearch/`, then the SUE with `values_opentelemetry_demo_persistence.yaml` |
+| Istio | `mesh=istio` of `recommendation_k8_scrape_mesh.yml` | Istio in `istio-system`, sidecar injection on `system-under-evaluation`, then the Elasticsearch setup |
 
 None of them deploys Prometheus or Kepler, so run `oxn setup` first.
 
@@ -34,6 +34,8 @@ Specs without a `deployment` section expect the SUE to be running already.
 oxn deploy experiments/test.yml
 oxn teardown experiments/test.yml
 ```
+
+For a spec with a [matrix](experiments.md#matrix) whose variants deploy different things, pick one with `--only`, for example `oxn deploy experiments/x.yml --only storage=elasticsearch`.
 
 The Makefile has shortcuts: `make deploy-sue` and `make teardown-sue`, with `SPEC=<spec>` to pick another spec than `experiments/test.yml`.
 

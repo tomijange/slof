@@ -15,6 +15,7 @@ from typing import List
 
 from oxn.common import utils
 from oxn.common.utils import utc_timestamp
+from oxn.core.matrix import Variant
 from oxn.models.experiment_spec import ExperimentSpec
 from oxn.models.orchestrator import Orchestrator
 from oxn.models.treatment import Treatment
@@ -43,12 +44,15 @@ class ExperimentRunner:
         config_filename=None,
         treatment_registry: TreatmentRegistry | None = None,
         random_treatment_order=False,
+        variant: Variant | None = None,
     ):
         self.orchestrator = orchestrator
         self.config = config
         """Experiment specification"""
         self.config_filename = config_filename
         """Experiment specification filename"""
+        self.variant = variant if variant is not None else Variant()
+        """The variant of the spec's matrix this run executes, one without levels for a spec without a matrix"""
         self.id = uuid.uuid4().hex
         """Random and unique ID to identify runs"""
         self.treatments = {}  # since python 3.6 dict remembers order of insertion
@@ -64,14 +68,21 @@ class ExperimentRunner:
         self.observer = Observer(orchestrator=self.orchestrator, config=self.config)
         """Observer for response variables"""
         self.hash: str | None = None
-        """SHA-256 of the spec path, None without one"""
+        """SHA-256 of the experiment key, None without a spec path"""
         self._compute_hash()
         """Compute unique identifiers for runs and experiment config"""
         self._build_treatments()
         """Populate the treatment dict from the config"""
 
     def __repr__(self):
-        return f"ExperimentRunner(config={self.config_filename}, hash={self.short_hash}, run={self.short_id})"
+        return f"ExperimentRunner(config={self.experiment_key}, hash={self.short_hash}, run={self.short_id})"
+
+    @property
+    def experiment_key(self) -> str | None:
+        """The spec path, followed by the variant id in brackets if the spec has a matrix. None without a spec path"""
+        if not self.config_filename:
+            return None
+        return self.variant.key(self.config_filename)
 
     @property
     def short_id(self) -> str:
@@ -96,10 +107,9 @@ class ExperimentRunner:
         return utils.humanize_utc_timestamp(self.experiment_end)
 
     def _compute_hash(self) -> None:
-        """Hash the config filename to uniquely identify experiments"""
-        if self.config_filename:
-            file_name = self.config_filename.encode("utf-8")
-            hash = hashlib.sha256(file_name, usedforsecurity=False)
+        """Hash the experiment key to identify the spec, and the variant of its matrix"""
+        if self.experiment_key:
+            hash = hashlib.sha256(self.experiment_key.encode("utf-8"), usedforsecurity=False)
             self.hash = hash.hexdigest()
 
     def _build_treatments(self) -> None:

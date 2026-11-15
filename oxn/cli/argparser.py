@@ -9,6 +9,9 @@ import os
 
 from oxn.common.utils import time_string_to_seconds
 
+DEFAULT_SCHEMA_PATH = "schema.json"
+"""Where oxn schema writes the schema, in the root of the repository. Kept here, so --help does not import oxn.core"""
+
 
 def validate_file(file):
     if not os.path.exists(file):
@@ -38,12 +41,26 @@ def add_logging_options(target, default_level="info"):
     )
 
 
+def add_only_option(target):
+    """Add the option that selects variants of a spec's matrix"""
+    target.add_argument(
+        "--only",
+        dest="only",
+        action="append",
+        default=[],
+        metavar="AXIS=LEVEL",
+        help="Only use the variants of the spec's matrix with this level, for example --only sampling=10.0. "
+        "Repeat it for several levels: levels of one axis are alternatives, levels of different axes must all match.",
+    )
+
+
 parser = argparse.ArgumentParser(
     prog="oxn",
     description="Observability experiments engine",
-    usage="%(prog)s [-h] spec [options]\n       %(prog)s {setup,deploy,teardown} ...",
-    epilog="Other commands: 'oxn setup' guides you through preparing a cluster, 'oxn deploy <spec>' and "
-    "'oxn teardown <spec>' apply and remove the deployment section of a spec without running the experiment. "
+    usage="%(prog)s [-h] spec [options]\n       %(prog)s {setup,plan,deploy,teardown,schema} ...",
+    epilog="Other commands: 'oxn setup' guides you through preparing a cluster, 'oxn plan <spec>' lists the runs "
+    "of a spec and its matrix, 'oxn deploy <spec>' and 'oxn teardown <spec>' apply and remove the deployment "
+    "section of a spec without running the experiment, 'oxn schema' writes the JSON schema of specs for editors. "
     "Use 'oxn <command> --help' for details.",
 )
 parser.set_defaults(command="run")
@@ -55,7 +72,12 @@ parser.add_argument(
     type=validate_file,
     help="Path to an oxn experiment specification to execute.",
 )
-parser.add_argument("--times", default=1, type=int, help="Run the experiment n times. Default is 1")
+parser.add_argument(
+    "--times",
+    default=1,
+    type=int,
+    help="Run every variant of the experiment n times, one round of all variants after the other. Default is 1",
+)
 parser.add_argument(
     "--report",
     dest="report",
@@ -68,6 +90,20 @@ parser.add_argument(
     help="Randomize the treatment execution order. Per default, treatments are executed in the order given in the "
     "experiment specification",
 )
+parser.add_argument(
+    "--randomize-variants",
+    dest="randomize_variants",
+    action="store_true",
+    help="Run the variants of the spec's matrix in a new random order in every round. Per default, every round "
+    "runs them in the order of the matrix",
+)
+parser.add_argument(
+    "--fail-fast",
+    dest="fail_fast",
+    action="store_true",
+    help="Stop at the first failed run. Per default, a failed run is torn down and the next run starts",
+)
+add_only_option(parser)
 parser.add_argument(
     "--extend",
     dest="extend",
@@ -129,8 +165,62 @@ for spec_parser in (deploy_parser, teardown_parser):
         type=validate_file,
         help="Path to an oxn experiment specification with a deployment section.",
     )
+    add_only_option(spec_parser)
 
-subcommand_parsers = {"setup": setup_parser, "deploy": deploy_parser, "teardown": teardown_parser}
+plan_parser = argparse.ArgumentParser(
+    prog="oxn plan",
+    description="Expand and validate an experiment specification and list the runs 'oxn <spec>' would do, "
+    "without touching the cluster.",
+)
+plan_parser.set_defaults(command="plan")
+add_logging_options(plan_parser, default_level="warning")
+plan_parser.add_argument(
+    "spec",
+    action="store",
+    type=validate_file,
+    help="Path to an oxn experiment specification.",
+)
+add_only_option(plan_parser)
+plan_parser.add_argument("--times", default=1, type=int, help="Runs of every variant to plan for. Default is 1")
+plan_parser.add_argument(
+    "--extend",
+    dest="extend",
+    type=validate_file,
+    help="Path to a treatment extension file, to check the treatments it defines.",
+)
+plan_parser.add_argument(
+    "--print",
+    dest="print_specs",
+    action="store_true",
+    help="Also print the expanded specification of every variant.",
+)
+
+schema_parser = argparse.ArgumentParser(
+    prog="oxn schema",
+    description="Write the JSON schema of experiment specs, which editors use for completion and checks. "
+    "The specs in experiments/ name it in their first line.",
+)
+schema_parser.set_defaults(command="schema")
+add_logging_options(schema_parser, default_level="warning")
+schema_parser.add_argument(
+    "--output",
+    default=DEFAULT_SCHEMA_PATH,
+    help=f"Where to write the schema, - for stdout. Default is {DEFAULT_SCHEMA_PATH}",
+)
+schema_parser.add_argument(
+    "--extend",
+    dest="extend",
+    type=validate_file,
+    help="Path to a treatment extension file, to include the treatments it defines.",
+)
+
+subcommand_parsers = {
+    "setup": setup_parser,
+    "plan": plan_parser,
+    "deploy": deploy_parser,
+    "teardown": teardown_parser,
+    "schema": schema_parser,
+}
 
 
 def parse_oxn_args(args):

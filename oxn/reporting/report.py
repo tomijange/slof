@@ -75,7 +75,7 @@ class Reporter:
             response.name if isinstance(response, MetricResponseVariable) else f"{response.name}.duration"
         )
         store_key = construct_key(
-            experiment_key=experiment.config_filename,
+            experiment_key=experiment.experiment_key,
             run_key=experiment.short_id,
             response_key=response.name,
         )
@@ -143,12 +143,26 @@ class Reporter:
         """Create human-readable datetime strings from integer timestamps"""
         return humanize_utc_timestamp(timestamp)
 
+    def begin_run(self, runner: ExperimentRunner) -> dict:
+        """
+        Start the report entry of a run
+
+        Forgets the interactions of the previous run. For a variant of a matrix, records its id and factors.
+        """
+        self.interactions = []
+        run: dict[str, Any] = {}
+        if runner.variant.levels:
+            run["variant"] = runner.variant.id
+            run["factors"] = runner.variant.factors
+        self.report_data["report"]["runs"][runner.short_id] = run
+        return self.report_data
+
     def assemble_interaction_data(self, run_key) -> dict:
         """Assemble all interaction data for an experiment run"""
-        self.report_data["report"]["runs"][run_key] = {}
-        self.report_data["report"]["runs"][run_key]["interactions"] = {}
+        run = self.report_data["report"]["runs"].setdefault(run_key, {})
+        run["interactions"] = {}
         for idx, interaction in enumerate(self.interactions):
-            self.report_data["report"]["runs"][run_key]["interactions"][f"interaction_{idx}"] = interaction
+            run["interactions"][f"interaction_{idx}"] = interaction
         return self.report_data
 
     def add_experiment_data(self, runner: ExperimentRunner) -> dict:

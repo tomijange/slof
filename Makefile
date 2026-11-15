@@ -1,4 +1,4 @@
-.PHONY: coverage lint format hooks build docs docs-serve clean setup-cluster deploy-sue teardown-sue
+.PHONY: coverage lint format hooks schema build docs docs-serve clean setup-cluster deploy-sue teardown-sue
 
 SPEC ?= experiments/test.yml
 
@@ -17,6 +17,10 @@ lint:
 format:
 	ruff check --fix .
 	ruff format .
+
+# Regenerates schema.json after changes to the spec model or the treatments
+schema:
+	python -m oxn schema
 
 # Runs make lint before every commit, with the hook in .githooks/
 hooks:

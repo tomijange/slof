@@ -17,6 +17,8 @@ In GOXN, the `recommendation_*` specs from the evaluation relied on `run_experim
 
 ## Deployment sections
 
+[Change 22](22-matrix-specs.md) merges the `recommendation_k8_*` specs named here into five specs with a matrix.
+
 **Now documented in:** [Deployments: shipped setups](../deployments.md#shipped-setups), [Elasticsearch](../tools/elasticsearch.md), [Istio](../tools/istio.md)
 
 Each spec deploys one of three setups. None of them deploys Prometheus or Kepler, so run `oxn setup` first ([Getting started: prepare the cluster](../getting-started.md#prepare-the-cluster)).

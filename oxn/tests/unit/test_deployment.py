@@ -7,7 +7,14 @@ from kubernetes.client.exceptions import ApiException
 
 from oxn.common.errors import DeploymentException, OxnException
 from oxn.core.engine import Engine, Phase
-from oxn.core.validation import load_experiment_specification, read_experiment_specification, validate_syntax
+from oxn.core.matrix import Variant
+from oxn.core.validation import (
+    ExperimentVariant,
+    load_experiment_specification,
+    load_variants,
+    read_experiment_specification,
+    validate_syntax,
+)
 from oxn.models.experiment_spec import DeploymentDescription, HelmRelease
 from oxn.orchestration.deployment import Deployment
 
@@ -176,16 +183,39 @@ class ShippedExperimentsTest(unittest.TestCase):
         paths = glob.glob(os.path.join(REPO_ROOT, "experiments", "*.yml"))
         self.assertTrue(paths)
         for path in sorted(paths):
-            with self.subTest(path=os.path.basename(path)):
-                deployment = Deployment.from_experiment_spec(load_experiment_specification(path))
-                if deployment is None:
-                    continue
-                last_step = deployment.steps[-1]
-                assert isinstance(last_step, HelmRelease)
-                self.assertEqual(last_step.release, "astronomy-shop")
-                for step in deployment.steps:
-                    for local_path in getattr(step, "values", []) + getattr(step, "paths", []):
-                        self.assertTrue(os.path.exists(os.path.join(REPO_ROOT, local_path)), local_path)
+            for experiment in load_variants(path):
+                with self.subTest(path=os.path.basename(path), variant=experiment.variant.id):
+                    self._check_deployment(experiment.spec)
+
+    def _check_deployment(self, spec):
+        deployment = Deployment.from_experiment_spec(spec)
+        if deployment is None:
+            return
+        last_step = deployment.steps[-1]
+        assert isinstance(last_step, HelmRelease)
+        self.assertEqual(last_step.release, "astronomy-shop")
+        for step in deployment.steps:
+            for local_path in getattr(step, "values", []) + getattr(step, "paths", []):
+                self.assertTrue(os.path.exists(os.path.join(REPO_ROOT, local_path)), local_path)
+
+    def test_the_recommendation_specs_are_matrices(self):
+        paths = sorted(glob.glob(os.path.join(REPO_ROOT, "experiments", "recommendation_k8_*.yml")))
+        counts = {os.path.basename(path): len(load_variants(path)) for path in paths}
+        self.assertEqual(
+            counts,
+            {
+                "recommendation_k8_fault.yml": 8,
+                "recommendation_k8_metric_export.yml": 6,
+                "recommendation_k8_minimal.yml": 3,
+                "recommendation_k8_sampling.yml": 8,
+                "recommendation_k8_scrape_mesh.yml": 6,
+            },
+        )
+
+
+def single_variant(spec=None) -> list:
+    """The variants of a spec without a matrix, for an engine whose spec is not read from a file"""
+    return [ExperimentVariant(variant=Variant(), spec=spec if spec is not None else mock.MagicMock(), raw={})]
 
 
 class EngineOrderTest(unittest.TestCase):
@@ -194,8 +224,7 @@ class EngineOrderTest(unittest.TestCase):
         calls.generator.side_effect = KeyboardInterrupt
         calls.runner.return_value.treatments = {}
         engine = Engine(configuration_path="spec.yml", report_path="reports/")
-        engine.spec = mock.MagicMock()
-        engine.spec.experiment.orchestrator = orchestrator
+        engine.variants = single_variant()
         with (
             mock.patch(f"oxn.core.engine.{orchestrator_class}", calls.orchestrator),
             mock.patch("oxn.core.engine.LocustKubernetesLoadgenerator", calls.generator),
@@ -224,8 +253,7 @@ class EngineMissingResponseTest(unittest.TestCase):
         runner.treatments = {"treatment": mock.MagicMock()}
         runner.observer.variables.return_value = {"captured": captured, "missing": missing}
         engine = Engine(configuration_path="spec.yml", report_path="reports/")
-        engine.spec = mock.MagicMock()
-        engine.spec.experiment.orchestrator = "kubernetes"
+        engine.variants = single_variant()
         engine.reporter = mock.MagicMock()
         with (
             mock.patch("oxn.core.engine.KubernetesOrchestrator"),
@@ -239,12 +267,12 @@ class EngineMissingResponseTest(unittest.TestCase):
 
 
 class EnginePhaseTest(unittest.TestCase):
-    def _run(self, keep_sue=False, orchestrate_error=None):
+    def _run(self, keep_sue=False, orchestrate_error=None, fail_fast=False):
         runner = mock.MagicMock()
         runner.treatments = {}
         runner.observer.variables.return_value = {}
-        engine = Engine(configuration_path="spec.yml", report_path="reports/", keep_sue=keep_sue)
-        engine.spec = mock.MagicMock()
+        engine = Engine(configuration_path="spec.yml", report_path="reports/", keep_sue=keep_sue, fail_fast=fail_fast)
+        engine.variants = single_variant()
         engine.reporter = mock.MagicMock()
         phases = []
         enter = engine._enter
@@ -278,8 +306,13 @@ class EnginePhaseTest(unittest.TestCase):
         self.assertIs(engine.phase, Phase.COMPLETED)
         orchestrator.teardown.assert_not_called()
 
-    def test_a_failed_deploy_is_left_to_main_to_tear_down(self):
+    def test_a_failed_deploy_is_torn_down_by_the_engine(self):
         engine, _, orchestrator = self._run(orchestrate_error=OxnException(message="deploy failed"))
+        self.assertIs(engine.phase, Phase.COMPLETED)
+        orchestrator.teardown.assert_called_once()
+
+    def test_with_fail_fast_a_failed_deploy_is_left_to_main_to_tear_down(self):
+        engine, _, orchestrator = self._run(orchestrate_error=OxnException(message="deploy failed"), fail_fast=True)
         self.assertIs(engine.phase, Phase.ORCHESTRATION)
         self.assertTrue(engine.phase.sue_deployed)
         orchestrator.teardown.assert_not_called()
@@ -342,7 +375,9 @@ class MainCleanupTest(unittest.TestCase):
             engine = engine_class.return_value
             engine.phase = Phase.LOAD
             engine.run.side_effect = error
-            run_experiment(mock.MagicMock(keep_sue=True))
+            with self.assertRaises(SystemExit) as exited:
+                run_experiment(mock.MagicMock(keep_sue=True))
+        self.assertEqual(exited.exception.code, 1)
         engine_class.assert_called_once()
         self.assertTrue(engine_class.call_args.kwargs["keep_sue"])
         return engine

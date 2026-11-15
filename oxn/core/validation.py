@@ -5,12 +5,14 @@ Connection: Used by the Engine to ensure the experiment configuration is correct
 
 Module to handle validation of experiment specifications"""
 
-from typing import Dict, List, Set
+from dataclasses import dataclass
+from typing import Any, Dict, List, Sequence, Set
 
 import pydantic
 import yaml
 
 from oxn.common.errors import OxnException
+from oxn.core.matrix import MatrixError, Variant, expand
 from oxn.models.experiment_spec import (
     TREATMENTS_CONTEXT_KEY,
     ExperimentSpec,
@@ -174,8 +176,59 @@ def validate_syntax(
         raise OxnException(message="Can't validate experiment spec", explanation=str(e))
 
 
+@dataclass(frozen=True)
+class ExperimentVariant:
+    """One variant of an experiment spec and its typed model. A spec without a matrix has one, without levels."""
+
+    variant: Variant
+    spec: ExperimentSpec
+    raw: Dict[str, Any]
+    """The spec of the variant as read from YAML, with the placeholders filled in"""
+
+
+def load_variants(
+    path: str,
+    treatments: TreatmentRegistry | None = None,
+    check_treatments: bool = True,
+    only: Sequence[str] = (),
+) -> List[ExperimentVariant]:
+    """
+    Read an experiment specification file, expand its matrix and validate every selected variant syntactically
+
+    only holds selections like sampling=10.0, see matrix.expand. Validation stops at the first invalid variant
+    and names it. See validate_syntax for the other arguments.
+    """
+    raw = read_experiment_specification(path)
+    if not isinstance(raw, dict):
+        raise OxnException(message=f"Experiment spec {path} is not a mapping")
+    try:
+        rendered = expand(raw, only)
+    except (MatrixError, pydantic.ValidationError) as e:
+        raise OxnException(message=f"Can't expand the matrix of {path}", explanation=str(e))
+    loaded = []
+    for variant, raw in rendered:
+        try:
+            spec = validate_syntax(raw, treatments, check_treatments)
+        except OxnException as e:
+            if not variant.levels:
+                raise
+            raise OxnException(message=f"Can't validate variant {variant.id} of {path}", explanation=e.explanation)
+        loaded.append(ExperimentVariant(variant=variant, spec=spec, raw=raw))
+    return loaded
+
+
 def load_experiment_specification(
     path: str, treatments: TreatmentRegistry | None = None, check_treatments: bool = True
 ) -> ExperimentSpec:
-    """Read an experiment specification file and validate it syntactically, see validate_syntax"""
-    return validate_syntax(read_experiment_specification(path), treatments, check_treatments)
+    """
+    Read an experiment specification file and validate it syntactically, see validate_syntax
+
+    For specs with a matrix of more than one variant use load_variants.
+    """
+    variants = load_variants(path, treatments, check_treatments)
+    if len(variants) > 1:
+        raise OxnException(
+            message=f"{path} has a matrix with {len(variants)} variants",
+            explanation="Select one variant, for example with --only " + variants[0].variant.id.split(",")[0],
+        )
+    return variants[0].spec
