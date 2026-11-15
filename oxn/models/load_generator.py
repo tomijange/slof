@@ -1,13 +1,16 @@
 import logging
 from abc import ABC, abstractmethod
 
+from oxn.models.experiment_spec import ExperimentSpec
+from oxn.models.orchestrator import Orchestrator
+
 logger = logging.getLogger(__name__)
 
 
 class BaseLoadGenerator(ABC):
     """Abstract base class for load generators"""
 
-    def __init__(self, orchestrator, config):
+    def __init__(self, orchestrator: Orchestrator, config: ExperimentSpec):
         assert orchestrator is not None, "Orchestrator must not be None"
         self.orchestrator = orchestrator
         """A reference to the orchestrator instance"""

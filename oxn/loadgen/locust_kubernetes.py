@@ -150,6 +150,7 @@ class LocustKubernetesLoadgenerator(BaseLoadGenerator):
         if self.target:
             # Generate and deploy YAMLs on Kubernetes.
             self.resources = self._generate_k8s_yaml()
+            assert isinstance(self.orchestrator, KubernetesOrchestrator), "Orchestrator must be KubernetesOrchestrator"
             # Assumes the orchestrator exposes a method `deploy_yaml(yaml_str)` to deploy a YAML manifest.
             self.orchestrator.deploy_configmap_yaml(self.resources["configmap"])
             self.orchestrator.deploy_deployment_yaml(self.resources["master"])
@@ -175,6 +176,7 @@ class LocustKubernetesLoadgenerator(BaseLoadGenerator):
             requests_sent = sum(entry["num_requests"] for entry in self.stats["stats"])
             failures = sum(entry["num_failures"] for entry in self.stats["stats"])
             logger.info(f"Load generation sent {requests_sent} requests, {failures} failed")
+            assert isinstance(self.orchestrator, KubernetesOrchestrator), "Orchestrator must be KubernetesOrchestrator"
             # Optionally, use the orchestrator to delete deployed resources.
             self.orchestrator.delete_configmap_yaml(self.resources["configmap"])
             self.orchestrator.delete_deployment_yaml(self.resources["master"])
@@ -200,6 +202,7 @@ class LocustKubernetesLoadgenerator(BaseLoadGenerator):
         if not self.target:
             return None
 
+        assert isinstance(self.orchestrator, KubernetesOrchestrator), "Orchestrator must be KubernetesOrchestrator"
         # Build the URL for the stats endpoint.
         cluster_proxy = self.orchestrator.cluster_proxy
         url = cluster_proxy.service_url(self.target.namespace, "locust-master", 8089, "stats/requests")
