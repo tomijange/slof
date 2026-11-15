@@ -70,3 +70,27 @@ python -m pytest oxn/tests/unit/test_deployment.py oxn/tests/unit/test_installer
 ```
 
 `make coverage` runs the whole test suite, but parts of it are out of date: several modules do not import and other tests fail. These two files cover the deployment code and the setup guide, and they pass.
+
+## Lint and format
+
+Ruff lints and formats the Python code and yamllint checks the YAML. Both are Python packages, as is the type checker below. Install them once, with the virtual environment active:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+`make lint` checks every file without changing it, the same check the Lint workflow runs on every push and pull request. `make format` fixes what Ruff can fix and formats the Python files. yamllint does not change files, so fix its findings by hand.
+
+The settings are in `pyproject.toml` for Ruff and `.yamllint.yml` for yamllint. yamllint skips the Locust manifests in `locust/kubernetes/` that are Jinja templates.
+
+## Type check
+
+ty checks the type hints in `oxn/` and `locust/`. It is in `requirements-dev.txt` and runs as the last step of `make lint`. To run it on its own, with the virtual environment active:
+
+```bash
+ty check
+```
+
+ty reads the installed packages from the active virtual environment, so install `oxn` with `pip install -e .` first. Otherwise every import of `kubernetes`, `pandas` or `pydantic` is an error. The settings are under `[tool.ty]` in `pyproject.toml`: ty checks against Python 3.10, the oldest version `oxn` supports, and skips `evaluation/`, whose scripts and notebooks need packages that `oxn` does not install.
+
+In VS Code, the [ty extension](https://marketplace.visualstudio.com/items?itemName=astral-sh.ty) shows the same findings while you type.

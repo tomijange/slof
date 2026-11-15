@@ -1,0 +1,5 @@
+# Linting and formatting, see docs/getting-started.md#lint-and-format
+ruff==0.17.5
+yamllint==1.38.0
+# Type checking, see docs/getting-started.md#type-check
+ty==0.0.104

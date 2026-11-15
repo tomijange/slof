@@ -21,6 +21,7 @@ SLOF builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legler. Th
 14-remove-setup-scripts
 15-material-theme
 16-refactorings
+17-lint-and-format
 ```
 
 ## In order
@@ -43,6 +44,7 @@ SLOF builds on [GOXN](https://github.com/JulianLegler/goxn) by Julian Legler. Th
 | 14 | [Removal of the setup scripts](14-remove-setup-scripts.md) | No `setup/` folder. `oxn setup` prepares the cluster, Getting started covers installing |
 | 15 | [Material theme for the docs](15-material-theme.md) | The docs site uses `sphinx-immaterial`, with tabs, search, light and dark mode and the theme's Mermaid renderer |
 | 16 | [Refactorings](16-refactorings.md) | One `phase` field and `Engine.teardown()` instead of `sue_running` and `loadgen_running`. Failed or interrupted deployments are torn down. One module per treatment in `oxn/treatments/runtime` and `compile_time`. `experiment_key` differs per spec. One `log_exception` helper in `oxn/common/log.py` |
+| 17 | [Linting, formatting and type checking](17-lint-and-format.md) | Ruff for Python, yamllint for YAML, ty for type hints, `make lint`, `make format` and a Lint workflow. No `.vscode/` folder |
 
 ## GOXN and now
 
@@ -68,6 +70,8 @@ What differs from GOXN today, by area. "Changed in" points to the change pages, 
 | Metric names in specs | `jaeger-query`, `kepler_container_*_joules_total`, demo 1.x names | Names of the current charts | [8](08-stack-versions.md#experimentstestyml), [11](11-current-stack-specs.md#metric-names) | [Kepler](../tools/kepler.md#metrics), [Experiment design](../experiment-design.md#responses) |
 | Experiment specs | 30 s export specs leave `product-catalog` at 1 s | Fixed, every spec starts with a comment | [11](11-current-stack-specs.md#fix-in-the-30-s-export-specs) | [Experiment design](../experiment-design.md#the-specs-and-what-to-compare) |
 | Repository layout | Values and dashboard in the root, helper scripts | `deployments/`, no helper scripts | [9](09-repository-layout.md#deployments), [3](03-deployment-section.md#removed-scripts), [4](04-api-server-proxy.md#the-cluster-proxy), [5](05-oxn-setup.md#the-command) | [Getting started](../getting-started.md) |
+| Linting and formatting | None | Ruff and yamllint, pinned, checked in CI | [17](17-lint-and-format.md#ruff) | [Getting started](../getting-started.md#lint-and-format) |
+| Type checking | None, an unused `[mypy]` section | ty on `oxn/` and `locust/`, pinned, checked in CI | [17](17-lint-and-format.md#ty) | [Getting started](../getting-started.md#type-check) |
 | Documentation | One long README | Sphinx site with guides and tool pages, Material theme | [10](10-documentation-site.md#pages), [11](11-current-stack-specs.md#documentation), [15](15-material-theme.md#theme) | [Overview](../index.md) |
 
 ## Open limitations
@@ -77,7 +81,7 @@ What the changes so far leave open:
 | Limitation | From |
 |---|---|
 | Several unit tests from GOXN fail or do not import. [Removal of Docker Compose support](12-remove-docker-compose.md) removed some of them. | [1](01-package-layout.md#known-limitations) |
-| The debug configuration in `.vscode/launch.json` still runs the removed `experiments/debug.yml`. | [9](09-repository-layout.md#known-limitations) |
+| The repository does not pass `make lint` yet, and ty finds 160 type problems. Ruff selects only a small set of rules, and `evaluation/` is not type checked. | [17](17-lint-and-format.md#known-limitations) |
 | After an error or ctrl-c, in-cluster Locust pods and treatments are only removed with the SUE, so they stay with `--keep-sue`. | [16](16-refactorings.md#known-limitations) |
 
 ## Writing a change page

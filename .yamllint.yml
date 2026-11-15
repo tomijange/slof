@@ -1,0 +1,24 @@
+extends: default
+
+ignore: |
+  .venv/
+  build/
+  docs/_build/
+  # Jinja templates that oxn renders before applying them, not valid YAML
+  locust/kubernetes/configmap.yaml
+  locust/kubernetes/master.yaml
+  locust/kubernetes/worker.yaml
+
+rules:
+  # Specs and values files are single documents without ---
+  document-start: disable
+  # PromQL queries in the specs do not wrap
+  line-length: disable
+  # Kubernetes manifests often do not indent lists under their key
+  indentation:
+    indent-sequences: consistent
+  # Commented-out entries keep the indentation they would have
+  comments-indentation: disable
+  # on: in GitHub workflows is a key, not a boolean
+  truthy:
+    check-keys: false
