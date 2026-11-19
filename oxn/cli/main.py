@@ -104,6 +104,7 @@ def run_experiment(args):
         keep_sue=args.keep_sue,
         only=args.only,
         fail_fast=args.fail_fast,
+        dashboard=args.dashboard,
     )
     try:
         engine.load_experiment_specification()

@@ -53,6 +53,9 @@ experiment:
     jaeger:
       name: jaeger
       namespace: system-under-evaluation
+    grafana:
+      name: kube-prometheus-grafana
+      namespace: oxn-external-monitoring
     prometheus:
       - {name: prometheus, namespace: system-under-evaluation, target: sue}
       - {name: kube-prometheus-kube-prome-prometheus, namespace: oxn-external-monitoring, target: oxn}

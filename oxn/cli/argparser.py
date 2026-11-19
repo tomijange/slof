@@ -124,6 +124,12 @@ parser.add_argument(
     action="store_true",
     help="Do not tear down the SUE after the experiment, e.g. to inspect it. Tear it down later with oxn teardown <spec>",
 )
+parser.add_argument(
+    "--dashboard",
+    action="store_true",
+    help="Show the metric responses of every run live in the Grafana of oxn setup, with a marker per treatment. "
+    "oxn logs how to open it. When a run ends, its dashboard is pinned to the observed window and kept",
+)
 
 
 setup_parser = argparse.ArgumentParser(

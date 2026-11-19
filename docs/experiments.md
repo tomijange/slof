@@ -20,6 +20,7 @@ oxn experiments/test.yml --report reports/
 | `--extend FILE` | Load additional treatments from a Python file |
 | `--timeout T` | How long to wait for the SUE to become ready, default `1m` |
 | `--keep-sue` | Skip teardown after the experiment |
+| `--dashboard` | Show the metric responses of every run live in Grafana. See [Live dashboard](#live-dashboard) |
 | `--loglevel LEVEL` | `debug`, `info`, `warning`, `error` or `critical`, default `info` |
 | `--logfile FILE` | Also write logs to a file |
 
@@ -37,6 +38,31 @@ Every round runs each variant once, in this order, 2 rounds
 ```
 
 It takes `--only`, `--times` and `--extend` like a run. `--print` also prints the spec of every variant with its placeholders filled in.
+
+### Live dashboard
+
+With `--dashboard`, every run gets its own dashboard in the Grafana that the spec names in `services.grafana`, for `oxn setup` the [Grafana](tools/grafana.md) of kube-prometheus-stack. Without that entry, `oxn` warns and runs without a dashboard. When the load starts, `oxn` logs how to open it:
+
+```text
+Live dashboard of run 3f9a1c2e: kubectl port-forward -n oxn-external-monitoring svc/kube-prometheus-grafana 3000:80, then open http://localhost:3000/d/oxn-run-3f9a1c2e...
+```
+
+| Part | Content |
+|---|---|
+| Run panel | Spec, run, variant, start and the treatments with their start and end |
+| One panel per metric response | Its `metric_name` and `labels`, on the Prometheus of its `target`, at its `step` |
+| Treatment markers | A band per treatment from its start to its end, which grows while it runs |
+| Title and tags | `<spec> · <variant> · <run>`, tagged `oxn`, the spec name and every `axis=level`, so Grafana's search filters by variant |
+
+The dashboard starts at the longest `left_window` before the load. While the run lasts, it refreshes every 10 s and ends at now, and once the load ended, at the end of the longest `right_window`. When the responses are observed, it is pinned to that window, the one `oxn` stores, and stops refreshing. A failed or interrupted run is pinned when it is torn down. Trace responses are listed in the Run panel, not plotted.
+
+The dashboards stay after the run. Remove them with:
+
+```bash
+kubectl delete configmap -n oxn-external-monitoring -l app.kubernetes.io/managed-by=oxn,oxn/kind=dashboard
+```
+
+The panels of a Prometheus inside the SUE, such as target `sue` in the shipped specs, are empty once the SUE is torn down, because its data goes with it. Responses of target `oxn` stay. If Grafana is missing or a ConfigMap cannot be written, `oxn` logs a warning and the run goes on.
 
 ## Spec structure
 
@@ -59,6 +85,9 @@ experiment:
     jaeger:
       name: jaeger
       namespace: system-under-evaluation
+    grafana:
+      name: kube-prometheus-grafana
+      namespace: oxn-external-monitoring
     prometheus: [
       { name: prometheus, namespace: system-under-evaluation, target: sue },
       { name: kube-prometheus-kube-prome-prometheus, namespace: oxn-external-monitoring, target: oxn },

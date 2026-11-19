@@ -1,6 +1,6 @@
 # Grafana
 
-Grafana shows dashboards for the external Prometheus, including the Kepler dashboard from `deployments/dashboards/`. `oxn` does not need it to run experiments.
+Grafana shows dashboards for the external Prometheus, including the Kepler dashboard from `deployments/dashboards/`, and the [live dashboard](../experiments.md#live-dashboard) of every run started with `--dashboard`. `oxn` does not need it to run experiments.
 
 | | |
 |---|---|
@@ -41,6 +41,17 @@ kubectl label configmap kepler-dashboard \
 ```
 
 Unlike a file copied into the pod, the ConfigMap survives pod restarts and the removal of the `kube-prometheus` release between experiments.
+
+## Dashboards and datasources from oxn
+
+With `--dashboard`, `oxn` writes ConfigMaps into the namespace of the spec's `services.grafana`, `oxn-external-monitoring` in the shipped specs, which the sidecars of the chart load without a login, as for the Kepler dashboard:
+
+| ConfigMap | Label | Content |
+|---|---|---|
+| `oxn-datasource-<hash>` | `grafana_datasource=1` | A datasource `oxn <namespace>/<name>` for each Prometheus in the spec's `services.prometheus`, at `http://<name>.<namespace>:9090/` |
+| `oxn-dashboard-<run>` | `grafana_dashboard=1` | The dashboard of one run, with the uid `oxn-run-<run>` |
+
+All carry `app.kubernetes.io/managed-by=oxn` and `oxn/kind`. The uid of a datasource comes from the namespace and name of its Prometheus, so every spec that names the same Prometheus shares it. The datasource sidecar only watches the namespace of Grafana, which is why `oxn` writes there and not next to the SUE.
 
 ## Check it
 

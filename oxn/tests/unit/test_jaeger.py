@@ -13,7 +13,8 @@ warnings.simplefilter("ignore", ResourceWarning)
 class JaegerTests(unittest.TestCase):
     def setUp(self) -> None:
         orchestrator = MagicMock()
-        orchestrator.get_jaeger_address.return_value = "localhost"
+        orchestrator.get_jaeger_url.return_value = "http://localhost:16686/"
+        orchestrator.http_session.side_effect = lambda max_retries=None: Session()
         self.api = Jaeger(orchestrator=orchestrator)
 
     def tearDown(self) -> None:

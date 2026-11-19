@@ -15,7 +15,8 @@ warnings.simplefilter("ignore", ResourceWarning)
 class PrometheusTests(unittest.TestCase):
     def setUp(self) -> None:
         orchestrator = MagicMock()
-        orchestrator.get_prometheus_address.return_value = "localhost"
+        orchestrator.get_prometheus_url.return_value = "http://localhost:9090/"
+        orchestrator.http_session.side_effect = lambda max_retries=None: Session()
         self.api = Prometheus(orchestrator=orchestrator)
 
     def tearDown(self) -> None:

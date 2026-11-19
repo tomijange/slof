@@ -11,7 +11,7 @@
 | `oxn/treatments/` | `runtime/` and `compile_time/`, one module per treatment, `registry.py`, which maps actions to treatment classes, and `kubernetes.py`, the base class of Kubernetes-only treatments |
 | `oxn/orchestration/` | `kubernetes_orchestrator.py`, `kubernetes_objects.py`, `deployment.py`, `cluster_proxy.py` |
 | `oxn/loadgen/` | `locust_kubernetes.py`, `file_load_generator.py` |
-| `oxn/observability/` | `prometheus.py`, `jaeger.py`, `observer.py`, `responses.py` |
+| `oxn/observability/` | `prometheus.py`, `jaeger.py`, `observer.py`, `responses.py`, `dashboard.py` for `--dashboard` |
 | `oxn/reporting/` | `report.py`, `store.py` |
 | `oxn/common/` | `errors.py`, `utils.py`, `settings.py`, `log.py` |
 | `oxn/models/` | `experiment_spec.py` (typed model of an experiment spec), `treatment_params.py` (base classes of treatment params), `orchestrator.py` (the orchestrator interface), `workload.py` (the workloads it acts on) and base classes for load generators, treatments and responses |
@@ -31,9 +31,9 @@
 1. **Set up.** The engine creates a `KubernetesOrchestrator` from `kubernetes_orchestrator.py` and an `ExperimentRunner` from `runner.py` for the spec of the variant. The runner builds the treatments with the registry and knows the experiment key of the variant.
 2. **Deploy.** If the spec has a `deployment` section, `deployment.py` installs the stack.
 3. **Compile-time treatments.** The runner applies the treatments from `treatments/compile_time/`, which change the SUE's configuration before the load starts. They patch the deployed SUE and restart its pods. The orchestrator then checks that the SUE is ready.
-4. **Load.** The engine creates a `LocustKubernetesLoadgenerator` from `locust_kubernetes.py`, which starts Locust in the cluster.
-5. **Runtime treatments.** The runner applies each treatment from `treatments/runtime/` and then cleans it up.
-6. **Observe.** `observer.py` collects the response variables from `responses.py`, which query `prometheus.py` and `jaeger.py`.
+4. **Load.** The engine creates a `LocustKubernetesLoadgenerator` from `locust_kubernetes.py`, which starts Locust in the cluster. With `--dashboard`, `RunDashboard` from `observability/dashboard.py` then publishes the live dashboard of the run.
+5. **Runtime treatments.** The runner applies each treatment from `treatments/runtime/` and then cleans it up. With `--dashboard`, it updates the dashboard after each treatment starts and ends.
+6. **Observe.** `observer.py` collects the response variables from `responses.py`, which query `prometheus.py` and `jaeger.py`. With `--dashboard`, the dashboard is then pinned to the observed window.
 7. **Store and report.** `store.py` writes each response to `store.h5`, under the experiment key of the variant and with its factors as metadata, and `report.py` gathers the data for the report.
 8. **Tear down.** `deployment.py` removes the stack, unless `--keep-sue` is set.
 
@@ -46,7 +46,7 @@ The engine, load generators, observability clients and treatments use the SUE th
 | Group | Methods |
 |---|---|
 | Lifecycle | `orchestrate`, `ready`, `teardown` |
-| Addresses | `get_address_for_service`, `get_prometheus_address`, `get_jaeger_address` |
+| Addresses | `get_address_for_service`, `get_prometheus_url` and `get_jaeger_url`, external through the API server proxy or `internal=True` for the cluster DNS name, `http_session` for external urls |
 | Workloads | `get_instances`, `kill_instance`, `get_replicas`, `scale`, `restart`, `is_ready`, `get_environment_variable`, `set_environment_variable` |
 | Network faults | `prepare_network_faults`, `set_network_delay`, `set_network_loss`, `set_network_corruption`, `remove_network_faults` |
 | Telemetry configuration | Get and set the global scrape values of the SUE's Prometheus and the collector's probabilistic sampler. Setting restarts the component |

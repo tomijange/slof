@@ -8,11 +8,10 @@ Wrapper around the Prometheus HTTP API"""
 import logging
 
 import requests
-from requests.adapters import HTTPAdapter, Retry
+from requests.adapters import Retry
 
 from oxn.common.errors import PrometheusException
 from oxn.models.orchestrator import Orchestrator
-from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -25,16 +24,8 @@ class Prometheus:
         assert orchestrator is not None
         self.orchestrator = orchestrator
         retries = Retry(total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504], raise_on_status=False)
-        if isinstance(orchestrator, KubernetesOrchestrator):
-            prometheus = orchestrator.get_prometheus_service(target)
-            self.session = orchestrator.cluster_proxy.session(max_retries=retries)
-            self.base_url = orchestrator.cluster_proxy.service_url(
-                prometheus.namespace, prometheus.name, 9090, "api/v1/"
-            )
-        else:
-            self.session = requests.Session()
-            self.session.mount("http://", HTTPAdapter(max_retries=retries))
-            self.base_url = f"http://{orchestrator.get_prometheus_address(target)}:9090/api/v1/"
+        self.session = orchestrator.http_session(max_retries=retries)
+        self.base_url = orchestrator.get_prometheus_url(target) + "api/v1/"
         logger.debug(f"Using Prometheus at {self.base_url}")
         self.endpoints = {
             "range_query": "query_range",

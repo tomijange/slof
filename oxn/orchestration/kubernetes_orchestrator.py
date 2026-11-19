@@ -11,14 +11,17 @@ import logging
 import time
 from typing import Any, Callable, List, Optional, Tuple
 
+import requests
 import yaml
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
 from kubernetes.client.models.v1_deployment import V1Deployment
 from kubernetes.client.models.v1_pod import V1Pod
+from urllib3.util import Retry
 
 from oxn.common.errors import OrchestratorException, OrchestratorResourceNotFoundException, OxnException
 from oxn.common.log import log_exception
+from oxn.common.settings import JAEGER_PORT, PROMETHEUS_PORT
 from oxn.models.experiment_spec import ExperimentSpec, ServiceReference, Services
 from oxn.models.orchestrator import Orchestrator
 from oxn.models.workload import WorkloadInstance, WorkloadSelector
@@ -179,19 +182,8 @@ class KubernetesOrchestrator(Orchestrator):
             )
         return cluster_ip
 
-    def get_jaeger_address(self) -> str:
-        """
-        Get the address of the Jaeger service
-
-        Returns:
-            The address of the Jaeger service
-
-        """
-        jaeger = self.get_jaeger_service()
-        return self.get_address_for_service(
-            name=jaeger.name,
-            namespace=jaeger.namespace,
-        )
+    def get_jaeger_url(self, internal: bool = False) -> str:
+        return self._service_url(self.get_jaeger_service(), JAEGER_PORT, internal)
 
     def get_jaeger_service(self):
         """
@@ -212,20 +204,28 @@ class KubernetesOrchestrator(Orchestrator):
             )
         return services
 
-    def get_prometheus_address(self, target: str) -> str:
-        """
-        Get the address of the Prometheus service
+    def get_prometheus_url(self, target: str, internal: bool = False) -> str:
+        return self._service_url(self.get_prometheus_service(target), PROMETHEUS_PORT, internal)
 
-        Returns:
-            The address of the Prometheus service
+    def http_session(self, max_retries: Optional[Retry] = None) -> requests.Session:
+        return self.cluster_proxy.session(max_retries=max_retries)
 
-        """
+    def _service_url(self, service: ServiceReference, port: int, internal: bool) -> str:
+        """The cluster DNS name of a service inside the cluster, else its url through the API server proxy"""
+        if internal:
+            return f"http://{service.name}.{service.namespace}:{port}/"
+        return self.cluster_proxy.service_url(service.namespace, service.name, port)
 
-        prometheus_config = self.get_prometheus_service(target)
-        return self.get_address_for_service(
-            name=prometheus_config.name,
-            namespace=prometheus_config.namespace,
-        )
+    def get_grafana_service(self) -> ServiceReference:
+        """The Grafana service of the spec, which the live dashboards are published to"""
+        grafana = self._services().grafana
+        if grafana is None:
+            raise OrchestratorException(
+                message="The spec has no experiment.services.grafana",
+                explanation="--dashboard publishes to the Grafana named there, "
+                "for oxn setup {name: kube-prometheus-grafana, namespace: oxn-external-monitoring}",
+            )
+        return grafana
 
     def get_prometheus_service(self, target):
         """

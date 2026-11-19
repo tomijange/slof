@@ -1,18 +1,23 @@
 import unittest
 from unittest import mock
 
+import yaml
 from kubernetes import client
 from requests import PreparedRequest, Session
 from requests.adapters import HTTPAdapter, Retry
 from requests.structures import CaseInsensitiveDict
 
 from oxn.common.errors import OrchestratorException
+from oxn.core.validation import validate_syntax
 from oxn.loadgen.locust_kubernetes import LocustKubernetesLoadgenerator
+from oxn.models.experiment_spec import ServiceReference
+from oxn.models.orchestrator import Orchestrator
 from oxn.observability.jaeger import Jaeger
 from oxn.observability.prometheus import Prometheus
 from oxn.orchestration.cluster_proxy import ClusterProxy, KubeconfigTokenAuth
 from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 from oxn.steering.steering_controller import SteeringController
+from oxn.tests.unit.spec_mocks import kubernetes_experiment
 
 API_SERVER = "https://192.168.178.80:16443"
 
@@ -25,13 +30,11 @@ def configuration(**attributes) -> client.Configuration:
     return config
 
 
-def kubernetes_orchestrator() -> mock.Mock:
-    orchestrator = mock.Mock(spec=KubernetesOrchestrator)
+def kubernetes_orchestrator() -> KubernetesOrchestrator:
+    """A KubernetesOrchestrator for the services of kubernetes_experiment, without a cluster"""
+    orchestrator = KubernetesOrchestrator.__new__(KubernetesOrchestrator)
     orchestrator.cluster_proxy = ClusterProxy(configuration())
-    orchestrator.get_prometheus_service.return_value = mock.Mock(namespace="monitoring")
-    orchestrator.get_prometheus_service.return_value.name = "prometheus"
-    orchestrator.get_jaeger_service.return_value = mock.Mock(namespace="sue")
-    orchestrator.get_jaeger_service.return_value.name = "jaeger"
+    orchestrator.experiment_config = validate_syntax(yaml.safe_load(kubernetes_experiment))
     return orchestrator
 
 
@@ -158,26 +161,51 @@ class SteeringControllerTests(unittest.TestCase):
 
 class ProxiedClientTests(unittest.TestCase):
     def test_prometheus_goes_through_the_proxy(self):
-        orchestrator = kubernetes_orchestrator()
-        prometheus = Prometheus(orchestrator, target="oxn")
-        orchestrator.get_prometheus_service.assert_called_once_with("oxn")
+        prometheus = Prometheus(kubernetes_orchestrator(), target="oxn")
         self.assertEqual(
             prometheus.base_url,
-            f"{API_SERVER}/api/v1/namespaces/monitoring/services/prometheus:9090/proxy/api/v1/",
+            f"{API_SERVER}/api/v1/namespaces/oxn-external-monitoring/services/kube-prometheus-kube-prome-prometheus:9090"
+            "/proxy/api/v1/",
         )
+        self.assertIsInstance(prometheus.session.auth, KubeconfigTokenAuth)
 
     def test_jaeger_goes_through_the_proxy(self):
+        jaeger = Jaeger(kubernetes_orchestrator())
         self.assertEqual(
-            Jaeger(kubernetes_orchestrator()).base_url,
-            f"{API_SERVER}/api/v1/namespaces/sue/services/jaeger:16686/proxy/jaeger/ui/api/",
+            jaeger.base_url,
+            f"{API_SERVER}/api/v1/namespaces/system-under-evaluation/services/jaeger:16686/proxy/jaeger/ui/api/",
         )
+        self.assertIsInstance(jaeger.session.auth, KubeconfigTokenAuth)
 
-    def test_other_orchestrators_keep_direct_addresses(self):
-        orchestrator = mock.Mock()
-        orchestrator.get_prometheus_address.return_value = "localhost"
-        orchestrator.get_jaeger_address.return_value = "localhost"
-        self.assertEqual(Prometheus(orchestrator).base_url, "http://localhost:9090/api/v1/")
+    def test_internal_urls_use_the_cluster_dns_name(self):
+        orchestrator = kubernetes_orchestrator()
+        self.assertEqual(
+            orchestrator.get_prometheus_url("sue", internal=True), "http://prometheus.system-under-evaluation:9090/"
+        )
+        self.assertEqual(
+            orchestrator.get_prometheus_url("oxn", internal=True),
+            "http://kube-prometheus-kube-prome-prometheus.oxn-external-monitoring:9090/",
+        )
+        self.assertEqual(orchestrator.get_jaeger_url(internal=True), "http://jaeger.system-under-evaluation:16686/")
+
+    def test_grafana_comes_from_the_spec(self):
+        orchestrator = kubernetes_orchestrator()
+        with self.assertRaises(OrchestratorException) as raised:
+            orchestrator.get_grafana_service()
+        self.assertIn("services.grafana", str(raised.exception.message))
+        services = orchestrator.experiment_config.experiment.services
+        assert services is not None
+        services.grafana = ServiceReference(name="kube-prometheus-grafana", namespace="oxn-external-monitoring")
+        self.assertEqual(orchestrator.get_grafana_service(), services.grafana)
+
+    def test_clients_use_the_urls_and_session_of_any_orchestrator(self):
+        orchestrator = mock.Mock(spec=Orchestrator)
+        orchestrator.get_prometheus_url.return_value = "http://localhost:9090/"
+        orchestrator.get_jaeger_url.return_value = "http://localhost:16686/"
+        self.assertEqual(Prometheus(orchestrator, target="sue").base_url, "http://localhost:9090/api/v1/")
+        orchestrator.get_prometheus_url.assert_called_once_with("sue")
         self.assertEqual(Jaeger(orchestrator).base_url, "http://localhost:16686/jaeger/ui/api/")
+        self.assertIs(Jaeger(orchestrator).session, orchestrator.http_session.return_value)
 
     @mock.patch.object(Session, "get")
     def test_locust_stats_go_through_the_proxy(self, get):

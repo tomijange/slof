@@ -1825,6 +1825,26 @@
             }
           ],
           "title": "Prometheus"
+        },
+        "grafana": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ServiceReference"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "The Grafana that --dashboard publishes the live dashboards to, with its dashboard and datasource sidecars"
+            },
+            {
+              "$ref": "#/$defs/Placeholder"
+            }
+          ],
+          "description": "The Grafana that --dashboard publishes the live dashboards to, with its dashboard and datasource sidecars"
         }
       },
       "required": [

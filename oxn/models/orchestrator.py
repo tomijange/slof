@@ -10,6 +10,9 @@ Connection: Implemented by oxn.orchestration.kubernetes_orchestrator.KubernetesO
 from abc import ABC, abstractmethod
 from typing import List, Optional, Tuple
 
+import requests
+from urllib3.util import Retry
+
 from oxn.models.experiment_spec import ServiceReference
 from oxn.models.workload import WorkloadInstance, WorkloadSelector
 
@@ -36,19 +39,24 @@ class Orchestrator(ABC):
     def teardown(self):
         """Remove the SUE, or do nothing if orchestrate() did not deploy it"""
 
-    # Addresses
+    # Addresses. An external url is reachable from where oxn runs, with the session of http_session(). An internal
+    # url is reachable from inside the SUE's network without credentials, for example for Grafana.
 
     @abstractmethod
     def get_address_for_service(self, namespace: str, name: str) -> str:
-        """Return the address of a service"""
+        """Return the address of a service inside the SUE's network, for example to send load to"""
 
     @abstractmethod
-    def get_prometheus_address(self, target: str) -> str:
-        """Return the address of the Prometheus of a target, sue or oxn"""
+    def get_prometheus_url(self, target: str, internal: bool = False) -> str:
+        """Return the root url of the Prometheus of a target, sue or oxn, ending in a slash"""
 
     @abstractmethod
-    def get_jaeger_address(self) -> str:
-        """Return the address of Jaeger"""
+    def get_jaeger_url(self, internal: bool = False) -> str:
+        """Return the root url of the query service of Jaeger, ending in a slash"""
+
+    @abstractmethod
+    def http_session(self, max_retries: Optional[Retry] = None) -> requests.Session:
+        """Return a session for external urls, with the credentials they need"""
 
     # Workloads
 

@@ -7,3 +7,9 @@ Connection: Referenced throughout the application for consistent configuration v
 
 STORAGE_NAME = "store.h5"
 TRIE_NAME = "trie.pickle"
+PROMETHEUS_PORT = 9090
+"""The port of the HTTP API of every Prometheus oxn reads from"""
+JAEGER_PORT = 16686
+"""The port of the query service of Jaeger"""
+GRAFANA_PORT = 80
+"""The port of the Grafana service"""

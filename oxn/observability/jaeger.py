@@ -9,11 +9,10 @@ import logging
 from typing import Optional
 
 import requests
-from requests.adapters import HTTPAdapter, Retry
+from requests.adapters import Retry
 
 from oxn.common.errors import JaegerException
 from oxn.models.orchestrator import Orchestrator
-from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 
 LOGGER = logging.getLogger(__name__)
 
@@ -32,21 +31,9 @@ class Jaeger:
         self.orchestrator = orchestrator
         retries = Retry(total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504], raise_on_status=False)
         """Retry policy. Force retries on server errors"""
-        if isinstance(orchestrator, KubernetesOrchestrator):
-            jaeger = orchestrator.get_jaeger_service()
-            self.session = orchestrator.cluster_proxy.session(max_retries=retries)
-            self.base_url = orchestrator.cluster_proxy.service_url(
-                jaeger.namespace, jaeger.name, 16686, "jaeger/ui/api/"
-            )
-            """Jaeger base url"""
-        else:
-            self.session = requests.Session()
-            self.session.mount("http://", HTTPAdapter(max_retries=retries))
-            """Mount the retry adapter"""
-            address = orchestrator.get_jaeger_address()
-            assert address is not None
-            self.base_url = f"http://{address}:16686/jaeger/ui/api/"
-            """Jaeger base url"""
+        self.session = orchestrator.http_session(max_retries=retries)
+        self.base_url = orchestrator.get_jaeger_url() + "jaeger/ui/api/"
+        """Jaeger base url"""
         LOGGER.debug(f"Using Jaeger at {self.base_url}")
         self.endpoints = {
             "traces": "traces",

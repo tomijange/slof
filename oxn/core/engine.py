@@ -19,6 +19,7 @@ from oxn.core.runner import ExperimentRunner
 from oxn.core.validation import ExperimentVariant, load_variants
 from oxn.loadgen.locust_kubernetes import LocustKubernetesLoadgenerator
 from oxn.models.experiment_spec import ExperimentSpec
+from oxn.observability.dashboard import RunDashboard
 from oxn.orchestration.kubernetes_orchestrator import KubernetesOrchestrator
 from oxn.reporting.report import Reporter
 from oxn.reporting.store import write_dataframe
@@ -75,6 +76,7 @@ class Engine:
         keep_sue=False,
         only: Sequence[str] = (),
         fail_fast=False,
+        dashboard=False,
     ):
         assert configuration_path is not None, "Configuration path must be specified"
         self.config = configuration_path
@@ -106,6 +108,10 @@ class Engine:
         """The step of the current run, see Phase"""
         self.keep_sue = keep_sue
         """Whether teardown() leaves the SUE deployed"""
+        self.dashboard = dashboard
+        """Whether every run shows its responses live in a Grafana dashboard"""
+        self.run_dashboard: Optional[RunDashboard] = None
+        """The live dashboard of the current run, while it is not pinned yet"""
 
     def _enter(self, phase: Phase):
         logger.debug(f"Entering phase {phase.value}")
@@ -231,11 +237,19 @@ class Engine:
         experiment_start = utc_timestamp()
         self.runner.experiment_start = experiment_start
         self.runner.observer.experiment_start = experiment_start
-        self.runner.execute_runtime_treatments()
+        if self.dashboard:
+            self.run_dashboard = RunDashboard(orchestrator=self.orchestrator, runner=self.runner)
+            self.run_dashboard.start()
+        on_change = self.run_dashboard.update if self.run_dashboard is not None else None
+        self.runner.execute_runtime_treatments(on_change=on_change)
         self.runner.clean_compile_time_treatments()
         self.runner.experiment_end = utc_timestamp()
         self.runner.observer.experiment_end = self.runner.experiment_end
+        if self.run_dashboard is not None:
+            # shows the end of the compile-time treatments, and stays live while the right window passes
+            self.run_dashboard.update()
         self.runner.observe_response_variables()
+        self._finish_dashboard()
         self.generator.stop()
         self._enter(Phase.REPORTING)
         logger.info("Stopped load generation")
@@ -274,6 +288,12 @@ class Engine:
                 logger.debug("Added load generation data")
         self.teardown()
 
+    def _finish_dashboard(self):
+        """Pin the live dashboard of the run, if it has one"""
+        if self.run_dashboard is not None:
+            self.run_dashboard.finish()
+            self.run_dashboard = None
+
     def teardown(self):
         """
         Clean up what the current phase left running
@@ -282,6 +302,8 @@ class Engine:
         still run and removes the SUE if it may be deployed, unless keep_sue is set. If removing the SUE
         fails, the phase stays at teardown, so calling this again retries it.
         """
+        # a failed or interrupted run ends now, its dashboard stops refreshing
+        self._finish_dashboard()
         if self.phase.loadgen_running:
             assert self.generator is not None
             self.generator.kill()

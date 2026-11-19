@@ -11,7 +11,7 @@ import logging
 import random
 import time
 import uuid
-from typing import List
+from typing import Callable, List, Optional
 
 from oxn.common import utils
 from oxn.common.utils import utc_timestamp
@@ -143,10 +143,12 @@ class ExperimentRunner:
             treatment.end = utc_timestamp()
             treatment.clean()
 
-    def execute_runtime_treatments(self) -> None:
+    def execute_runtime_treatments(self, on_change: Optional[Callable[[], None]] = None) -> None:
         """
         Execute one run of the experiment
         A single experiment run is defined as one execution of all treatments and one observation of all responses
+
+        on_change is called after every treatment starts and ends, for example to update the live dashboard
         """
         ttw_left = self.observer.time_to_wait_left()
         logger.info(f"Sleeping for {ttw_left} seconds")
@@ -155,10 +157,14 @@ class ExperimentRunner:
         for treatment in self._get_runtime_treatments():
             logger.info(f"Injecting treatment {treatment.name}")
             treatment.start = utc_timestamp()
+            if on_change is not None:
+                on_change()
             treatment.inject()
             logger.info(f"Cleaning treatment {treatment.name}")
             treatment.clean()
             treatment.end = utc_timestamp()
+            if on_change is not None:
+                on_change()
             logger.info(f"Treatment {treatment.name} took {treatment.end - treatment.start:.1f}s")
         logger.info("Injected treatments")
 

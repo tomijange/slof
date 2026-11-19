@@ -170,13 +170,11 @@ class SpecConsumersTest(unittest.TestCase):
             mock.patch("oxn.orchestration.kubernetes_orchestrator.SteeringController"),
         ):
             orchestrator = KubernetesOrchestrator(experiment_config=kubernetes_spec())
-        with mock.patch.object(orchestrator, "get_address_for_service") as address:
-            orchestrator.get_jaeger_address()
-            address.assert_called_with(name="jaeger", namespace="system-under-evaluation")
-            orchestrator.get_prometheus_address("oxn")
-            address.assert_called_with(
-                name="kube-prometheus-kube-prome-prometheus", namespace="oxn-external-monitoring"
-            )
+        self.assertEqual(orchestrator.get_jaeger_url(internal=True), "http://jaeger.system-under-evaluation:16686/")
+        self.assertEqual(
+            orchestrator.get_prometheus_url("oxn", internal=True),
+            "http://kube-prometheus-kube-prome-prometheus.oxn-external-monitoring:9090/",
+        )
         self.assertTrue(orchestrator.ready(expected_services=None))
         read_service = orchestrator.kube_client.read_namespaced_service
         assert isinstance(read_service, mock.Mock)

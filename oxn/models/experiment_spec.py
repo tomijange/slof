@@ -67,6 +67,8 @@ class Services(SpecModel):
 
     jaeger: ServiceReference
     prometheus: List[PrometheusService]
+    grafana: Optional[ServiceReference] = None
+    """The Grafana that --dashboard publishes the live dashboards to, with its dashboard and datasource sidecars"""
 
 
 class MetricResponseDescription(SpecModel):
