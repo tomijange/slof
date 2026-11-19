@@ -80,7 +80,7 @@ experiment:
           repo: https://open-telemetry.github.io/opentelemetry-helm-charts
           version: 0.42.6
           namespace: system-under-evaluation
-          values: [deployments/values/values_opentelemetry_demo.yaml]
+          values: [../deployments/values/values_opentelemetry_demo.yaml]
   services:
     jaeger:
       name: jaeger
@@ -113,7 +113,7 @@ experiment:
     max_users: 500
     spawn_rate: 50
     locust_files: [
-      { path: locust/locust_basic_interaction.py },
+      { path: ../locust/locust_basic_interaction.py },
     ]
     target:
       name: frontend-proxy
@@ -122,6 +122,7 @@ experiment:
 ```
 
 - **`deployment`** lists what `oxn` installs before the run and removes afterwards. See [Deployments](deployments.md).
+- Paths of values files, manifests and locust files are relative to the folder of the spec file, `../` from `experiments/` to the repository root. A folder can therefore hold a spec together with copies of the files it uses.
 - **`services`** names the Jaeger and Prometheus services. `target` picks the Prometheus a response reads from: `oxn` for the external stack, `sue` for the one inside the SUE.
 - **`responses`** are the values to record. `left_window` and `right_window` set how far the observation extends before and after a treatment.
 - **`treatments`** run in the listed order unless you pass `--randomize`. Each one has a name, an `action` and `params`, see [Treatments](#treatments).
@@ -138,13 +139,13 @@ matrix:
   # a mapping: the keys name the levels, the values can be any YAML
   storage:
     memory:
-      values: deployments/values/values_opentelemetry_demo.yaml
+      values: ../deployments/values/values_opentelemetry_demo.yaml
       steps: []
     elasticsearch:
-      values: deployments/values/values_opentelemetry_demo_persistence.yaml
+      values: ../deployments/values/values_opentelemetry_demo_persistence.yaml
       steps:
         - manifests:
-            paths: [k8s/elasticsearch/]
+            paths: [../k8s/elasticsearch/]
             namespace: system-under-evaluation
             wait_for: [deployment/elasticsearch]
 experiment:

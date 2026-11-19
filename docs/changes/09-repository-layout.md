@@ -20,7 +20,7 @@ GOXN kept its values files and dashboard in the repository root, next to several
 - `deployments/values/` holds the values for every chart: kube-prometheus-stack (also the Istio variant), Istio, Kepler and the OpenTelemetry Demo with its persistence and local variants.
 - `deployments/dashboards/` holds the Kepler Grafana dashboard.
 
-Specs and `oxn setup` reference these paths, so `oxn` has to run from the repository root.
+Specs and `oxn setup` reference these paths, so `oxn` has to run from the repository root. Since [Paths relative to the spec](26-spec-relative-paths.md#resolving-paths), only `oxn setup` does.
 
 **Why.** With [deployment sections](03-deployment-section.md) in the specs, the values files are inputs that `oxn` reads, not just examples for the README. One folder makes it clear what a spec can reference.
 

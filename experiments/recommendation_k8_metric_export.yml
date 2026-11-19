@@ -25,13 +25,13 @@ matrix:
   export_interval: [1s, 30s, 60s]
   storage:
     memory:
-      values: deployments/values/values_opentelemetry_demo.yaml
+      values: ../deployments/values/values_opentelemetry_demo.yaml
       steps: []
     elasticsearch:
-      values: deployments/values/values_opentelemetry_demo_persistence.yaml
+      values: ../deployments/values/values_opentelemetry_demo_persistence.yaml
       steps:
         - manifests:
-            paths: [k8s/elasticsearch/]
+            paths: [../k8s/elasticsearch/]
             namespace: system-under-evaluation
             # Jaeger needs Elasticsearch to accept requests when it starts
             wait_for: [deployment/elasticsearch]
@@ -515,9 +515,9 @@ experiment:
     max_users: 500
     spawn_rate: 50
     locust_files:
-      - {path: locust/locust_basic_interaction.py}
-      - {path: locust/locust_otel_demo.py}
-    data_files: [locust/people.json]
+      - {path: ../locust/locust_basic_interaction.py}
+      - {path: ../locust/locust_otel_demo.py}
+    data_files: [../locust/people.json]
     target:
       name: frontend-proxy
       namespace: system-under-evaluation

@@ -6,6 +6,7 @@ Connection: Built by validation.py and handed by the Engine to the orchestrators
 """
 
 import json
+import os
 from typing import Annotated, Any, Callable, Dict, List, Literal, Optional, Protocol, Union
 
 import pydantic
@@ -124,6 +125,18 @@ def _treatment_catalog(info: ValidationInfo) -> Optional[TreatmentCatalog]:
     return (info.context or {}).get(TREATMENTS_CONTEXT_KEY)
 
 
+SPEC_DIR_CONTEXT_KEY = "spec_dir"
+"""Key of the folder of the spec file in the validation context, which relative paths in the spec are resolved against"""
+
+
+def _resolve_path(path: str, info: ValidationInfo) -> str:
+    """A relative path joined with the folder of the spec file, if the context names it. Absolute paths stay as they are"""
+    spec_dir = (info.context or {}).get(SPEC_DIR_CONTEXT_KEY)
+    if spec_dir is None or os.path.isabs(path):
+        return path
+    return os.path.normpath(os.path.join(spec_dir, path))
+
+
 def _describe_errors(error: pydantic.ValidationError) -> str:
     """Flatten the errors of a nested model, which pydantic only reports as one value error of the outer model"""
     return "; ".join(
@@ -187,6 +200,11 @@ class HelmRelease(SpecModel):
     """Individual value overrides, applied after all values files"""
     timeout: str = DEFAULT_TIMEOUT
 
+    @field_validator("values")
+    @classmethod
+    def _values_next_to_the_spec(cls, values: List[str], info: ValidationInfo) -> List[str]:
+        return [_resolve_path(path, info) for path in values]
+
     def install_command(self) -> List[str]:
         command = ["helm", "upgrade", "--install", self.release, self.chart]
         if self.repo:
@@ -220,6 +238,11 @@ class Manifests(SpecModel):
     wait_for: List[str] = Field(default_factory=list)
     """Resources like deployment/elasticsearch whose rollout must finish before the next step starts"""
     timeout: str = DEFAULT_TIMEOUT
+
+    @field_validator("paths")
+    @classmethod
+    def _paths_next_to_the_spec(cls, paths: List[str], info: ValidationInfo) -> List[str]:
+        return [_resolve_path(path, info) for path in paths]
 
     def _namespace_args(self) -> List[str]:
         return ["--namespace", self.namespace] if self.namespace else []
@@ -274,14 +297,14 @@ class DeploymentDescription(SpecModel):
                 repo: https://open-telemetry.github.io/opentelemetry-helm-charts
                 version: 0.42.6
                 namespace: system-under-evaluation
-                values: [deployments/values/values_opentelemetry_demo.yaml]
+                values: [../deployments/values/values_opentelemetry_demo.yaml]
                 set: {components.recommendation.resources.limits.cpu: 500m}
             - manifests:
-                paths: [k8s/elasticsearch/]
+                paths: [../k8s/elasticsearch/]
                 namespace: system-under-evaluation
                 wait_for: [deployment/elasticsearch]
 
-    Relative paths are resolved against the current working directory, like the other paths in an experiment spec.
+    Relative paths are resolved against the folder of the spec file, like the other paths in an experiment spec.
     """
 
     namespaces: List[Namespace] = Field(default_factory=list)
@@ -300,6 +323,11 @@ class Sue(SpecModel):
 
 class LocustFile(SpecModel):
     path: str
+
+    @field_validator("path")
+    @classmethod
+    def _path_next_to_the_spec(cls, path: str, info: ValidationInfo) -> str:
+        return _resolve_path(path, info)
 
 
 class LoadgenTarget(ServiceReference):
@@ -323,6 +351,11 @@ class Loadgen(SpecModel):
     """If set, locust runs inside the cluster instead of in the oxn process"""
     namespace: str = "oxn-loadgen"
     """Where the in-cluster locust runs. Outside the SUE's namespace, so its CPU and energy do not count as the SUE's"""
+
+    @field_validator("data_files")
+    @classmethod
+    def _data_files_next_to_the_spec(cls, paths: List[str], info: ValidationInfo) -> List[str]:
+        return [_resolve_path(path, info) for path in paths]
 
 
 class Experiment(SpecModel):

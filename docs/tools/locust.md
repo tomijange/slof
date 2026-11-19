@@ -19,17 +19,17 @@ loadgen:
   max_users: 500
   spawn_rate: 50
   locust_files: [
-    { path: locust/locust_basic_interaction.py },
-    { path: locust/locust_otel_demo.py },
+    { path: ../locust/locust_basic_interaction.py },
+    { path: ../locust/locust_otel_demo.py },
   ]
-  data_files: [locust/people.json]
+  data_files: [../locust/people.json]
   target:
     name: frontend-proxy
     namespace: system-under-evaluation
     port: 8080
 ```
 
-`oxn` ships every file in `locust_files` and `data_files` to the cluster in one ConfigMap, mounted into `/home/locust`, and starts master and workers with all locust files. Locust splits the users evenly between their user classes unless a class sets `weight`, and stops if two classes share a name, so the classes are `BasicInteractionUser` and `OtelDemoUser`. A locust file finds its data files next to itself, as `locust_otel_demo.py` does with `people.json`. Two shipped files cannot have the same name. `oxn` also imports every locust file locally to check it.
+`oxn` ships every file in `locust_files` and `data_files` to the cluster in one ConfigMap, mounted into `/home/locust`, and starts master and workers with all locust files. Locust splits the users evenly between their user classes unless a class sets `weight`, and stops if two classes share a name, so the classes are `BasicInteractionUser` and `OtelDemoUser`. A locust file finds its data files next to itself, as `locust_otel_demo.py` does with `people.json`. The paths are relative to the folder of the spec file, and two shipped files cannot have the same name. `oxn` also imports every locust file locally to check it.
 
 `oxn` also ships `oxn/loadgen/kubernetes/oxn_metrics.py`, which adds `/metrics` to the master's web UI, and a ServiceMonitor with the labels the Prometheus of target `oxn` selects by, read from its Prometheus resource. Prometheus then scrapes what the users saw every 15 s:
 

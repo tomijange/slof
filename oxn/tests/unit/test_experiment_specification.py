@@ -206,6 +206,52 @@ class SpecConsumersTest(unittest.TestCase):
         )
 
 
+class SpecPathTest(unittest.TestCase):
+    SPEC = {
+        "deployment": {
+            "steps": [
+                {"helm": {"release": "r", "chart": "c", "namespace": "n", "values": ["values/a.yaml", "/abs/b.yaml"]}},
+                {"manifests": {"paths": ["../k8s/x/"], "namespace": "n"}},
+            ]
+        },
+        "loadgen": {"run_time": "1m", "locust_files": [{"path": "locust/l.py"}]},
+    }
+
+    def _spec(self, spec_dir=None) -> ExperimentSpec:
+        raw = yaml.safe_load(kubernetes_experiment)
+        raw["experiment"]["deployment"] = self.SPEC["deployment"]
+        raw["experiment"]["loadgen"].update(self.SPEC["loadgen"])
+        return validate_syntax(raw, spec_dir=spec_dir)
+
+    def _paths(self, spec: ExperimentSpec):
+        experiment = spec.experiment
+        assert experiment.deployment is not None
+        helm, manifests = experiment.deployment.steps
+        return [*getattr(helm, "values"), *getattr(manifests, "paths"), experiment.loadgen.locust_files[0].path]
+
+    def test_relative_paths_are_resolved_against_the_folder_of_the_spec(self):
+        self.assertEqual(
+            self._paths(self._spec(spec_dir="suites/slo")),
+            ["suites/slo/values/a.yaml", "/abs/b.yaml", "suites/k8s/x", "suites/slo/locust/l.py"],
+        )
+
+    def test_a_spec_in_the_working_directory_keeps_its_paths(self):
+        self.assertEqual(
+            self._paths(self._spec(spec_dir="")), ["values/a.yaml", "/abs/b.yaml", "../k8s/x", "locust/l.py"]
+        )
+
+    def test_without_a_spec_folder_paths_stay_as_written(self):
+        self.assertEqual(self._paths(self._spec()), ["values/a.yaml", "/abs/b.yaml", "../k8s/x/", "locust/l.py"])
+
+    def test_load_variants_passes_the_folder_of_the_spec_file(self):
+        path = os.path.join(REPO_ROOT, "experiments", "test.yml")
+        (variant,) = load_variants(path)
+        self.assertEqual(
+            variant.spec.experiment.loadgen.locust_files[0].path,
+            os.path.join(REPO_ROOT, "locust", "locust_basic_interaction.py"),
+        )
+
+
 class LocustManifestTest(unittest.TestCase):
     """The manifests of the in-cluster Locust, rendered from oxn/loadgen/kubernetes/ for the locust files of test.yml"""
 

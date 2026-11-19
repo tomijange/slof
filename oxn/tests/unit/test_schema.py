@@ -9,6 +9,7 @@ import unittest
 import yaml
 
 from oxn.core.schema import schema_text, spec_schema
+from oxn.core.validation import load_variants
 from oxn.models.treatment_params import TreatmentParams
 from oxn.treatments.registry import TreatmentRegistry
 from oxn.treatments.runtime import EmptyTreatment
@@ -18,6 +19,15 @@ HAS_JSONSCHEMA = importlib.util.find_spec("jsonschema") is not None
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 SCHEMA_PATH = os.path.join(REPO_ROOT, "schema.json")
+SUITES = os.path.join(REPO_ROOT, "slof-experiments")
+"""Folders with a spec and copies of the files it references, see SuiteTest"""
+
+
+def shipped_specs():
+    """The specs in experiments/ and in the suites of slof-experiments/"""
+    return sorted(
+        glob.glob(os.path.join(REPO_ROOT, "experiments", "*.yml")) + glob.glob(os.path.join(SUITES, "*", "*.yml"))
+    )
 
 
 class SchemaFileTest(unittest.TestCase):
@@ -27,9 +37,10 @@ class SchemaFileTest(unittest.TestCase):
         self.assertEqual(committed, schema_text(TreatmentRegistry()), "Run make schema")
 
     def test_every_spec_names_the_schema(self):
-        for path in glob.glob(os.path.join(REPO_ROOT, "experiments", "*.yml")):
-            with self.subTest(path=os.path.basename(path)), open(path) as fp:
-                self.assertEqual(fp.readline(), "# yaml-language-server: $schema=../schema.json\n")
+        for path in shipped_specs():
+            schema = os.path.relpath(SCHEMA_PATH, os.path.dirname(path))
+            with self.subTest(path=os.path.relpath(path, REPO_ROOT)), open(path) as fp:
+                self.assertEqual(fp.readline(), f"# yaml-language-server: $schema={schema}\n")
 
     def test_own_treatments_get_their_params(self):
         class OwnParams(TreatmentParams):
@@ -65,8 +76,8 @@ class SchemaValidationTest(unittest.TestCase):
             cls.spec = yaml.safe_load(fp)
 
     def test_the_shipped_specs_and_their_matrices_are_valid(self):
-        for path in sorted(glob.glob(os.path.join(REPO_ROOT, "experiments", "*.yml"))):
-            with self.subTest(path=os.path.basename(path)), open(path) as fp:
+        for path in shipped_specs():
+            with self.subTest(path=os.path.relpath(path, REPO_ROOT)), open(path) as fp:
                 errors = [error.message for error in self.validator.iter_errors(yaml.safe_load(fp))]
                 self.assertEqual(errors, [])
 
@@ -114,3 +125,18 @@ class SchemaValidationTest(unittest.TestCase):
             experiment["deployment"]["steps"].insert(0, "${{ steps }}")
 
         self.assertIsNone(self._error(change))
+
+
+class SuiteTest(unittest.TestCase):
+    def test_a_suite_only_uses_its_own_files(self):
+        for path in glob.glob(os.path.join(SUITES, "*", "*.yml")):
+            suite = os.path.dirname(path)
+            for variant in load_variants(path, check_treatments=False):
+                experiment = variant.spec.experiment
+                files = [locust_file.path for locust_file in experiment.loadgen.locust_files]
+                for step in experiment.deployment.steps if experiment.deployment else []:
+                    files += getattr(step, "values", []) + getattr(step, "paths", [])
+                for file in files:
+                    with self.subTest(spec=os.path.relpath(path, REPO_ROOT), file=os.path.relpath(file, suite)):
+                        self.assertTrue(file.startswith(suite + os.sep), f"{file} is not in {suite}")
+                        self.assertTrue(os.path.exists(file))

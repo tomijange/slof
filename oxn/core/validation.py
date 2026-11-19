@@ -5,6 +5,7 @@ Connection: Used by the Engine to ensure the experiment configuration is correct
 
 Module to handle validation of experiment specifications"""
 
+import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Sequence, Set
 
@@ -14,6 +15,7 @@ import yaml
 from oxn.common.errors import OxnException
 from oxn.core.matrix import MatrixError, Variant, expand
 from oxn.models.experiment_spec import (
+    SPEC_DIR_CONTEXT_KEY,
     TREATMENTS_CONTEXT_KEY,
     ExperimentSpec,
     MetricResponseDescription,
@@ -158,16 +160,22 @@ def read_experiment_specification(path: str) -> dict:
 
 
 def validate_syntax(
-    experiment_spec: dict, treatments: TreatmentRegistry | None = None, check_treatments: bool = True
+    experiment_spec: dict,
+    treatments: TreatmentRegistry | None = None,
+    check_treatments: bool = True,
+    spec_dir: str | None = None,
 ) -> ExperimentSpec:
     """
     Validate an experiment specification syntactically and return its typed model
 
     The action and params of every treatment are checked against treatments, the built-in treatments if it is None.
     With check_treatments=False they are not checked and the params stay UncheckedParams, for commands that only
-    read other sections.
+    read other sections. Relative paths of values files, manifests and locust files are resolved against spec_dir,
+    the folder of the spec file. Without it, they stay as written.
     """
-    context = {}
+    context: Dict[str, Any] = {}
+    if spec_dir is not None:
+        context[SPEC_DIR_CONTEXT_KEY] = spec_dir
     if check_treatments:
         context[TREATMENTS_CONTEXT_KEY] = treatments if treatments is not None else TreatmentRegistry()
     try:
@@ -208,7 +216,7 @@ def load_variants(
     loaded = []
     for variant, raw in rendered:
         try:
-            spec = validate_syntax(raw, treatments, check_treatments)
+            spec = validate_syntax(raw, treatments, check_treatments, spec_dir=os.path.dirname(path))
         except OxnException as e:
             if not variant.levels:
                 raise

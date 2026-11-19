@@ -9,7 +9,7 @@ This guide takes you from a fresh checkout to a finished experiment on a Kuberne
 - [Helm](https://helm.sh/docs/intro/install/)
 - A cluster with real hardware energy counters, if you want Kepler data
 
-Run every command from the repository root, because the paths in experiment specs are relative to it.
+Run `oxn setup` from the repository root, because it reads its values from `deployments/`. Paths in experiment specs are relative to the spec file.
 
 ## Install oxn
 

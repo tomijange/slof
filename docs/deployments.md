@@ -55,15 +55,17 @@ experiment:
           repo: https://open-telemetry.github.io/opentelemetry-helm-charts
           version: 0.42.6
           namespace: system-under-evaluation
-          values: [deployments/values/values_opentelemetry_demo.yaml]
+          values: [../deployments/values/values_opentelemetry_demo.yaml]
           set: {components.recommendation.resources.limits.cpu: 500m}
           timeout: 15m               # optional, default 15m
       - manifests:
-          paths: [k8s/elasticsearch/]
+          paths: [../k8s/elasticsearch/]
           namespace: system-under-evaluation
           wait_for: [deployment/elasticsearch]
           timeout: 15m               # optional, default 15m
 ```
+
+Relative paths in `values` and `paths` are resolved against the folder of the spec file, so this spec lives in `experiments/`.
 
 ## What deploy and teardown do
 
