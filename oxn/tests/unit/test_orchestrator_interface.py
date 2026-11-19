@@ -7,10 +7,12 @@ from kubernetes import client
 from kubernetes.client.exceptions import ApiException
 
 from oxn.common.errors import OrchestratorException, OxnException
+from oxn.core.validation import validate_syntax
 from oxn.models.orchestrator import Orchestrator
 from oxn.models.workload import WorkloadInstance, WorkloadSelector
 from oxn.orchestration.kubernetes_orchestrator import PROMETHEUS, KubernetesOrchestrator
 from oxn.steering.steering_controller import SIDECAR_CONTAINER_NAME, SteeringController
+from oxn.tests.unit.spec_mocks import kubernetes_experiment
 from oxn.treatments.registry import TreatmentRegistry
 from oxn.treatments.runtime import EmptyKubernetesTreatment, KillTreatment, NetworkDelayTreatment
 
@@ -104,8 +106,10 @@ class KubernetesOrchestratorTest(unittest.TestCase):
         self.orchestrator = KubernetesOrchestrator.__new__(KubernetesOrchestrator)
         self.apps = mock.Mock()
         self.core = mock.Mock()
+        self.custom = mock.Mock()
         self.orchestrator.api_client = self.apps
         self.orchestrator.kube_client = self.core
+        self.orchestrator.custom_client = self.custom
         self.orchestrator.steering_controller = SteeringController(self.apps, mock.MagicMock())
 
     def _deployment(self, *containers: str) -> client.V1Deployment:
@@ -159,6 +163,41 @@ class KubernetesOrchestratorTest(unittest.TestCase):
         self.core.delete_namespaced_config_map.assert_called_once_with(name="locust-master", namespace="sue")
         with self.assertRaises(OrchestratorException):
             self.orchestrator.deploy_yaml(manifest.replace("Service", "Secret"))
+
+    def test_service_monitors_are_custom_objects(self):
+        manifest = "kind: ServiceMonitor\nmetadata: {name: locust-master, namespace: oxn-loadgen}\n"
+        self.orchestrator.deploy_yaml(manifest)
+        kwargs = self.custom.create_namespaced_custom_object.call_args.kwargs
+        self.assertEqual(
+            (kwargs["group"], kwargs["version"], kwargs["plural"], kwargs["namespace"]),
+            ("monitoring.coreos.com", "v1", "servicemonitors", "oxn-loadgen"),
+        )
+        self.orchestrator.delete_yaml(manifest)
+        self.assertEqual(self.custom.delete_namespaced_custom_object.call_args.kwargs["name"], "locust-master")
+
+    def test_service_monitor_labels_come_from_the_prometheus_of_the_target(self):
+        self.orchestrator.experiment_config = validate_syntax(yaml.safe_load(kubernetes_experiment))
+        self.core.read_namespaced_service.return_value = client.V1Service(
+            spec=client.V1ServiceSpec(selector={"operator.prometheus.io/name": "main"})
+        )
+        self.custom.get_namespaced_custom_object.return_value = {
+            "spec": {"serviceMonitorSelector": {"matchLabels": {"release": "kube-prometheus"}}}
+        }
+        self.assertEqual(self.orchestrator.get_service_monitor_labels("oxn"), {"release": "kube-prometheus"})
+        self.core.read_namespaced_service.assert_called_with(
+            "kube-prometheus-kube-prome-prometheus", "oxn-external-monitoring"
+        )
+        self.assertEqual(self.custom.get_namespaced_custom_object.call_args.args[-1], "main")
+        # a Prometheus without the operator
+        self.core.read_namespaced_service.return_value = client.V1Service(spec=client.V1ServiceSpec(selector={}))
+        self.assertIsNone(self.orchestrator.get_service_monitor_labels("oxn"))
+
+    def test_a_missing_namespace_is_created_and_an_existing_one_left_alone(self):
+        self.orchestrator.ensure_namespace("oxn-loadgen")
+        self.core.create_namespace.assert_not_called()
+        self.core.read_namespace.side_effect = ApiException(status=404)
+        self.orchestrator.ensure_namespace("oxn-loadgen")
+        self.assertEqual(self.core.create_namespace.call_args.args[0].metadata.name, "oxn-loadgen")
 
     @mock.patch.object(KubernetesOrchestrator, "restart")
     def test_scrape_values_are_written_to_the_configmap(self, restart):

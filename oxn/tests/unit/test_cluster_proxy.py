@@ -213,8 +213,9 @@ class ProxiedClientTests(unittest.TestCase):
         generator = LocustKubernetesLoadgenerator.__new__(LocustKubernetesLoadgenerator)
         generator.orchestrator = kubernetes_orchestrator()
         generator.target = mock.Mock(namespace="sue")
+        generator.namespace = "oxn-loadgen"
         self.assertEqual(generator.get_stats_from_master(), {"stats": []})
         self.assertEqual(
             get.call_args.args[0],
-            f"{API_SERVER}/api/v1/namespaces/sue/services/locust-master:8089/proxy/stats/requests",
+            f"{API_SERVER}/api/v1/namespaces/oxn-loadgen/services/locust-master:8089/proxy/stats/requests",
         )

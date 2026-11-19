@@ -4,10 +4,10 @@ Locust generates load on the SUE during an experiment.
 
 | | Managed by `oxn` | Helm (manual alternative) |
 |---|---|---|
-| Source | Templates in `locust/kubernetes/` | `deliveryhero/locust` 0.31.6 |
-| Locust version | `locustio/locust`, untagged | 2.15.1, the chart's default |
+| Source | Templates in `oxn/loadgen/kubernetes/` | `deliveryhero/locust` 0.31.6 |
+| Locust version | `locustio/locust:2.37.9`, the version `requirements.txt` pins | 2.15.1, the chart's default |
 | Lifetime | Created and removed in each run | Until you uninstall it |
-| Namespace | `system-under-evaluation` | `system-under-evaluation` |
+| Namespace | `oxn-loadgen`, or `loadgen.namespace` of the spec, created if missing | `system-under-evaluation` |
 
 ## Managed by oxn
 
@@ -22,13 +22,24 @@ loadgen:
     { path: locust/locust_basic_interaction.py },
     { path: locust/locust_otel_demo.py },
   ]
+  data_files: [locust/people.json]
   target:
     name: frontend-proxy
     namespace: system-under-evaluation
     port: 8080
 ```
 
-Only the first entry in `locust_files` is sent to the cluster. `oxn` also imports every listed file locally to check it, and `locust_otel_demo.py` reads `locust/people.json` from a path relative to the repository root.
+`oxn` ships every file in `locust_files` and `data_files` to the cluster in one ConfigMap, mounted into `/home/locust`, and starts master and workers with all locust files. Locust splits the users evenly between their user classes unless a class sets `weight`, and stops if two classes share a name, so the classes are `BasicInteractionUser` and `OtelDemoUser`. A locust file finds its data files next to itself, as `locust_otel_demo.py` does with `people.json`. Two shipped files cannot have the same name. `oxn` also imports every locust file locally to check it.
+
+`oxn` also ships `oxn/loadgen/kubernetes/oxn_metrics.py`, which adds `/metrics` to the master's web UI, and a ServiceMonitor with the labels the Prometheus of target `oxn` selects by, read from its Prometheus resource. Prometheus then scrapes what the users saw every 15 s:
+
+| Metric | Content |
+|---|---|
+| `locust_requests_total`, `locust_request_failures_total` | Requests and failures per request `name` and `method`, cumulative. Connection errors and status codes from 400 on are failures |
+| `locust_request_duration_seconds` | Histogram per `name` and `method`, with the bucket edges of the frontend's `http_server_request_duration_seconds` |
+| `locust_users` | Running users |
+
+Query them with `job="locust-master"`. The counters start at zero in every run. After an error or ctrl-c, `oxn` removes the Locust pods, as they run outside the SUE's namespace and would otherwise outlive the run.
 
 ## Deploy with Helm
 

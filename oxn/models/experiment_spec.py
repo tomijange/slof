@@ -315,8 +315,14 @@ class Loadgen(SpecModel):
     max_users: int = 100
     spawn_rate: int = 10
     locust_files: List[LocustFile] = Field(default_factory=list)
+    """The locust files that make up the load. With a target, all of them run, so their user classes need distinct
+    names"""
+    data_files: List[str] = Field(default_factory=list)
+    """Files the locust files read, such as people.json. With a target, they are shipped next to the locust files"""
     target: Optional[LoadgenTarget] = None
     """If set, locust runs inside the cluster instead of in the oxn process"""
+    namespace: str = "oxn-loadgen"
+    """Where the in-cluster locust runs. Outside the SUE's namespace, so its CPU and energy do not count as the SUE's"""
 
 
 class Experiment(SpecModel):

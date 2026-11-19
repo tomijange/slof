@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scripts-cm
+  namespace: {{ namespace }}
+# one key per file, mounted into /home/locust. JSON is valid YAML and needs no indentation of the contents.
+data: {{ files | tojson }}

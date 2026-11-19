@@ -5,7 +5,7 @@ metadata:
     role: locust-master
     app.kubernetes.io/name: locust-master
   name: locust-master
-  namespace: system-under-evaluation
+  namespace: {{ namespace }}
 spec:
   type: ClusterIP
   ports:

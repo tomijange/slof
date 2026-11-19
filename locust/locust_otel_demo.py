@@ -5,6 +5,7 @@
 
 
 import json
+import os
 import random
 import uuid
 
@@ -33,11 +34,11 @@ products = [
     "HQTGWGPNH4",
 ]
 
-people_file = open("locust/people.json")
+people_file = open(os.path.join(os.path.dirname(__file__), "people.json"))
 people = json.load(people_file)
 
 
-class WebsiteUser(HttpUser):
+class OtelDemoUser(HttpUser):
     wait_time = between(1, 10)
 
     @task(1)

@@ -33,6 +33,6 @@ class UserBehavior(TaskSet):
         )
 
 
-class WebsiteUser(HttpUser):
+class BasicInteractionUser(HttpUser):
     tasks = [UserBehavior]
     wait_time = between(1, 2)  # Adjust wait_time as necessary

@@ -19,7 +19,7 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-Use the editable install (`-e`). `oxn` loads its Locust templates from `locust/kubernetes/` in the checkout, so a regular `pip install .` fails when load generation starts.
+Use the editable install (`-e`), so changes in the checkout take effect without installing again.
 
 Check that the install worked:
 
@@ -81,7 +81,7 @@ pip install -r requirements-dev.txt
 
 `make lint` checks every file without changing it, the same check the Lint workflow runs on every push and pull request. `make format` fixes what Ruff can fix and formats the Python files. yamllint does not change files, so fix its findings by hand.
 
-The settings are in `pyproject.toml` for Ruff and `.yamllint.yml` for yamllint. yamllint skips the Locust manifests in `locust/kubernetes/` that are Jinja templates or copies from another project, and allows one space inside braces, as in `{ name: prometheus }`.
+The settings are in `pyproject.toml` for Ruff and `.yamllint.yml` for yamllint. yamllint skips the Locust templates in `oxn/loadgen/kubernetes/` and the manifests in `locust/kubernetes/` copied from another project, and allows one space inside braces, as in `{ name: prometheus }`.
 
 ### Commit hook
 

@@ -5,9 +5,9 @@ ignore: |
   build/
   docs/_build/
   # Jinja templates that oxn renders before applying them, not valid YAML
-  locust/kubernetes/configmap.yaml
-  locust/kubernetes/master.yaml
-  locust/kubernetes/worker.yaml
+  oxn/loadgen/kubernetes/configmap.yaml
+  oxn/loadgen/kubernetes/master.yaml
+  oxn/loadgen/kubernetes/worker.yaml
   # Copied from mosesliao/kubernetes-locust, kept as they were
   locust/kubernetes/master-deployment.yaml
   locust/kubernetes/slave-deployment.yaml

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: locust-master
-  namespace: system-under-evaluation
+  namespace: {{ namespace }}
   labels:
     role: locust-master
     app: locust-master
@@ -20,8 +20,8 @@ spec:
     spec:
       containers:
       - name: master
-        image: locustio/locust
-        args: ["--master", "--autostart", "--users", "{{ max_users }}", "--spawn-rate", "{{ spawn_rate }}", "--run-time", "{{ run_time }}", "--host", "http://{{ base_address }}:{{ port }}"]
+        image: {{ image }}
+        args: ["--master", "--autostart", "-f", "{{ locustfiles }}", "--users", "{{ max_users }}", "--spawn-rate", "{{ spawn_rate }}", "--run-time", "{{ run_time }}", "--host", "http://{{ base_address }}:{{ port }}"]
         volumeMounts:
         - mountPath: /home/locust
           name: locust-scripts

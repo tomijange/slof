@@ -1,0 +1,16 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: locust-master
+  namespace: {{ namespace }}
+  # the labels the Prometheus of target oxn selects ServiceMonitors by
+  labels: {{ labels | tojson }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: locust-master
+  endpoints:
+    # /metrics comes from oxn_metrics.py, which oxn ships with the locust files
+    - port: web-ui
+      path: /metrics
+      interval: 15s

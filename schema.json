@@ -912,6 +912,7 @@
         "locust_files": {
           "anyOf": [
             {
+              "description": "The locust files that make up the load. With a target, all of them run, so their user classes need distinct\nnames",
               "items": {
                 "anyOf": [
                   {
@@ -929,7 +930,32 @@
               "$ref": "#/$defs/Placeholder"
             }
           ],
-          "title": "Locust Files"
+          "title": "Locust Files",
+          "description": "The locust files that make up the load. With a target, all of them run, so their user classes need distinct\nnames"
+        },
+        "data_files": {
+          "anyOf": [
+            {
+              "description": "Files the locust files read, such as people.json. With a target, they are shipped next to the locust files",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/Placeholder"
+                  }
+                ]
+              },
+              "title": "Data Files",
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/Placeholder"
+            }
+          ],
+          "title": "Data Files",
+          "description": "Files the locust files read, such as people.json. With a target, they are shipped next to the locust files"
         },
         "target": {
           "anyOf": [
@@ -950,6 +976,21 @@
             }
           ],
           "description": "If set, locust runs inside the cluster instead of in the oxn process"
+        },
+        "namespace": {
+          "anyOf": [
+            {
+              "default": "oxn-loadgen",
+              "description": "Where the in-cluster locust runs. Outside the SUE's namespace, so its CPU and energy do not count as the SUE's",
+              "title": "Namespace",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Placeholder"
+            }
+          ],
+          "title": "Namespace",
+          "description": "Where the in-cluster locust runs. Outside the SUE's namespace, so its CPU and energy do not count as the SUE's"
         }
       },
       "required": [

@@ -18,13 +18,6 @@ class BaseLoadGenerator(ABC):
         self.config = config
         """The experiment spec"""
         self.env = None
-        """Locust environment"""
-        self._read_config()
-
-    @abstractmethod
-    def _read_config(self):
-        """Read the configuration and set up the environment"""
-        pass
 
     @abstractmethod
     def start(self):

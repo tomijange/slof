@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: locust-worker
-  namespace: system-under-evaluation
+  namespace: {{ namespace }}
   labels:
     role: locust-worker
     app: locust-worker
@@ -25,9 +25,8 @@ spec:
     spec:
       containers:
       - name: worker
-        image: locustio/locust
-        imagePullPolicy: Always
-        args: ["--worker", "--master-host={{ master_host }}"]
+        image: {{ image }}
+        args: ["--worker", "--master-host={{ master_host }}", "-f", "{{ locustfiles }}"]
         volumeMounts:
         - mountPath: /home/locust
           name: locust-scripts

@@ -81,8 +81,8 @@ Treatments built on `KubernetesTreatment` from `treatments/kubernetes.py` reject
 
 ## Files read at runtime
 
-`oxn` reads these repository files while running, so they must stay in place:
+`oxn` reads these files while running, so they must stay in place:
 
-- `locust/kubernetes/{configmap,master,worker,service}.yaml`: Jinja templates for the Locust pods
-- `locust/locust_*.py` and `locust/people.json`: Locust scenarios and their data
+- `oxn/loadgen/kubernetes/{configmap,master,worker,service}.yaml`: Jinja templates for the Locust pods, package data of `oxn`
+- `locust/locust_*.py` and `locust/people.json`: Locust scenarios and their data, as `locust_files` and `data_files` of the specs
 - `deployments/values/` and `k8s/elasticsearch/`: deployment inputs

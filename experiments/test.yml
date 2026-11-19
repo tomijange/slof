@@ -206,6 +206,7 @@ experiment:
         { path: locust/locust_basic_interaction.py },
         { path: locust/locust_otel_demo.py },
       ]
+    data_files: [locust/people.json]
     target:
       name: frontend-proxy
       namespace: system-under-evaluation

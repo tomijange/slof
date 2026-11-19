@@ -13,3 +13,5 @@ JAEGER_PORT = 16686
 """The port of the query service of Jaeger"""
 GRAFANA_PORT = 80
 """The port of the Grafana service"""
+LOCUST_IMAGE = "locustio/locust:2.37.9"
+"""The image of the in-cluster Locust, the version requirements.txt pins for oxn"""

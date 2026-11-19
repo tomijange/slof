@@ -9,7 +9,8 @@ Connection: Created by the engine for experiment.orchestrator: kubernetes.
 
 import logging
 import time
-from typing import Any, Callable, List, Optional, Tuple
+from functools import partial
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import requests
 import yaml
@@ -45,6 +46,10 @@ OTEL_COLLECTOR = WorkloadSelector(
 """The SUE's OpenTelemetry collector, whose ConfigMap the sampling values are written to"""
 
 
+SERVICE_MONITOR = {"group": "monitoring.coreos.com", "version": "v1", "plural": "servicemonitors"}
+"""The API of the ServiceMonitors of the Prometheus operator"""
+
+
 class KubernetesOrchestrator(Orchestrator):
     def __init__(self, experiment_config: ExperimentSpec):
         logger.info("Initializing Kubernetes orchestrator")
@@ -52,6 +57,7 @@ class KubernetesOrchestrator(Orchestrator):
         config.load_kube_config()
         self.kube_client = client.CoreV1Api()
         self.api_client = client.AppsV1Api()
+        self.custom_client = client.CustomObjectsApi()
         self.cluster_proxy = ClusterProxy()
         """HTTP access to pods and services, which are not routable from outside the cluster"""
         self.required_services = self.experiment_config.experiment.sue.required
@@ -226,6 +232,40 @@ class KubernetesOrchestrator(Orchestrator):
                 "for oxn setup {name: kube-prometheus-grafana, namespace: oxn-external-monitoring}",
             )
         return grafana
+
+    def get_service_monitor_labels(self, target: str) -> Optional[Dict[str, str]]:
+        """
+        The labels a ServiceMonitor needs, so that the Prometheus of a target scrapes it
+
+        Read from the serviceMonitorSelector of the Prometheus resource behind the target's service. None if no
+        Prometheus operator manages that Prometheus.
+        """
+        service = self.get_prometheus_service(target)
+        try:
+            found = self.kube_client.read_namespaced_service(service.name, service.namespace)
+            name = ((found.spec.selector if found.spec else None) or {}).get("operator.prometheus.io/name")
+            if name is None:
+                return None
+            prometheus = self.custom_client.get_namespaced_custom_object(
+                "monitoring.coreos.com", "v1", service.namespace, "prometheuses", name
+            )
+        except ApiException as e:
+            logger.debug(f"No Prometheus resource for target {target}: {e.status}")
+            return None
+        if not isinstance(prometheus, dict):
+            return None
+        selector = (prometheus.get("spec") or {}).get("serviceMonitorSelector") or {}
+        return dict(selector.get("matchLabels") or {})
+
+    def ensure_namespace(self, name: str) -> None:
+        """Create a namespace unless it exists. It is left in place afterwards"""
+        try:
+            self.kube_client.read_namespace(name)
+        except ApiException as e:
+            if e.status != 404:
+                raise OrchestratorException(message=f"Error while reading namespace {name}", explanation=str(e))
+            logger.info(f"Creating namespace {name}")
+            self.kube_client.create_namespace(client.V1Namespace(metadata=client.V1ObjectMeta(name=name)))
 
     def get_prometheus_service(self, target):
         """
@@ -571,7 +611,7 @@ class KubernetesOrchestrator(Orchestrator):
 
     def deploy_yaml(self, yaml_str: str):
         """
-        Create the Deployment, ConfigMap or Service a manifest describes, replacing one with the same name
+        Create the Deployment, ConfigMap, Service or ServiceMonitor a manifest describes, replacing one with the same name
 
         Args:
             yaml_str: The manifest
@@ -596,7 +636,7 @@ class KubernetesOrchestrator(Orchestrator):
 
     def delete_yaml(self, yaml_str: str):
         """
-        Delete the Deployment, ConfigMap or Service a manifest describes
+        Delete the Deployment, ConfigMap, Service or ServiceMonitor a manifest describes
 
         Args:
             yaml_str: The manifest
@@ -627,6 +667,10 @@ class KubernetesOrchestrator(Orchestrator):
             "Deployment": (self.api_client.create_namespaced_deployment, self.api_client.delete_namespaced_deployment),
             "ConfigMap": (self.kube_client.create_namespaced_config_map, self.kube_client.delete_namespaced_config_map),
             "Service": (self.kube_client.create_namespaced_service, self.kube_client.delete_namespaced_service),
+            "ServiceMonitor": (
+                partial(self.custom_client.create_namespaced_custom_object, **SERVICE_MONITOR),
+                partial(self.custom_client.delete_namespaced_custom_object, **SERVICE_MONITOR),
+            ),
         }
         if kind not in calls:
             raise OrchestratorException(

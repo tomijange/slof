@@ -125,5 +125,5 @@ The observer's warning changes from `Failed to capture latency, proceeding. <mes
 
 | Limitation | Status |
 |---|---|
-| When Locust runs in the cluster, killing the load generator stops nothing there. Its pods stay until the SUE teardown removes their namespace, or keep running with `--keep-sue`. | Open, unchanged from GOXN |
+| When Locust runs in the cluster, killing the load generator stops nothing there. Its pods stay until the SUE teardown removes their namespace, or keep running with `--keep-sue`. | Fixed in [In-cluster Locust](25-in-cluster-locust.md#removing-the-pods-after-an-error), `kill` removes them |
 | `Engine.teardown()` only tears down the SUE and does not clean up treatments, see the `TODO` in `engine.py`. Treatments on the SUE go away with it, but with `--keep-sue`, or for treatments outside the SUE's namespaces, they stay applied after an error or ctrl-c. | Open, unchanged from GOXN |

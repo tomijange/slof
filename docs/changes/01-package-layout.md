@@ -36,7 +36,7 @@ GOXN kept about 25 modules at the top level of `oxn/`, with relative imports. Th
 
 - **Entry point.** The `oxn` command now calls `oxn.cli.main:main`, set in `setup.cfg` and `oxn/__main__.py`. Reinstall with `pip install -e .` after updating.
 - **Imports.** Code that imports from GOXN must use the new paths. `evaluation/evaluation.py` now imports `oxn.reporting.store`, for example.
-- **Locust templates.** `locust_kubernetes.py` moved one level deeper, so it now finds its templates at `../../locust/kubernetes`.
+- **Locust templates.** `locust_kubernetes.py` moved one level deeper, so it now finds its templates at `../../locust/kubernetes`. [In-cluster Locust](25-in-cluster-locust.md#templates-as-package-data) moves them to `oxn/loadgen/kubernetes/`.
 
 ## Known limitations
 

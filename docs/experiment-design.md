@@ -64,7 +64,7 @@ flowchart TB
 - The SUE's own Prometheus is part of the observability setup under test. Its scrape interval is a factor, and its CPU and disk usage count toward the SUE. Responses read from it use `target: sue`.
 - The external Prometheus in `oxn-external-monitoring` does the measuring. It scrapes cAdvisor through the kubelet, kube-state-metrics and Kepler. It lives outside the SUE's namespace, so its own cost does not count toward the SUE. Responses read from it use `target: oxn`.
 
-**Locust counts toward the SUE.** Locust runs in `system-under-evaluation`. Responses that sum over the whole namespace, such as `system_CPU` or `kepler_joules_namespace_combined`, include the load generator. The per-container responses let you leave it out.
+**Locust runs outside the SUE.** Locust runs in its own namespace, `oxn-loadgen` unless the spec sets `loadgen.namespace`, so responses that sum over `system-under-evaluation`, such as `system_CPU` or `kepler_joules_namespace_combined`, do not include it. Runs before this change included the load generator in these sums.
 
 ## One run, step by step
 
@@ -210,7 +210,7 @@ All responses are Prometheus range queries, except the trace responses. Rates ar
 | CPU | `system_CPU`, `recommendation_deployment_CPU` | CPU usage of the namespace and of the recommendation pod, from cAdvisor | CPU cores |
 | Energy of the recommendation pod | `recommendation_kepler_package_joules`, `recommendation_kepler_dram_joules` | Kepler's estimate for the pod, CPU package and DRAM separately | watts |
 | Energy per container | `pods_kepler_{package,dram}_joules_all`, `pods_kepler_joules_all` and their `_absolute` versions | Each SUE container, labelled with `container_name` and `container_namespace` | watts |
-| Energy of the namespace | `kepler_{package,dram}_joules_namespace_combined`, `kepler_joules_namespace_combined`, `kepler_joules_total_namespace_combined` and their `_absolute` versions | The whole SUE, including Locust | watts |
+| Energy of the namespace | `kepler_{package,dram}_joules_namespace_combined`, `kepler_joules_namespace_combined`, `kepler_joules_total_namespace_combined` and their `_absolute` versions | The whole SUE, without Locust since it runs in its own namespace | watts |
 | Energy with more labels | `kepler_metric_all_namespace`, `pods_kepler_joules_all_container_level` | Per container with pod and node, or with the pod's `app.kubernetes.io/name` label | watts or joules |
 | Energy of all namespaces | `pods_kepler_*_absolute_all_namespaces`, `pods_kepler_joules_all_container_level_all_namespaces` | Every container on the cluster, including the monitoring stack, for comparison | joules |
 | Network | `cadvisor_network_bytes_{transmitted,received}_*` | Bytes sent and received, per app label, per namespace, or for the recommendation pod | bytes per second |
