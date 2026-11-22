@@ -324,6 +324,101 @@
       "title": "DeploymentDescription",
       "type": "object"
     },
+    "DeploymentImageParams": {
+      "additionalProperties": false,
+      "description": "Params of deployment_image",
+      "properties": {
+        "namespace": {
+          "anyOf": [
+            {
+              "title": "Namespace",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Placeholder"
+            }
+          ],
+          "title": "Namespace"
+        },
+        "label_selector": {
+          "anyOf": [
+            {
+              "description": "The label key, for example app.kubernetes.io/name",
+              "title": "Label Selector",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Placeholder"
+            }
+          ],
+          "title": "Label Selector",
+          "description": "The label key, for example app.kubernetes.io/name"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "description": "The value of the label, for example recommendation",
+              "title": "Label",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Placeholder"
+            }
+          ],
+          "title": "Label",
+          "description": "The value of the label, for example recommendation"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "description": "The image while the treatment is in place, with registry, repository and tag or digest",
+              "examples": [
+                "ghcr.io/open-telemetry/demo:2.0.2-recommendation"
+              ],
+              "minLength": 1,
+              "title": "Image",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Placeholder"
+            }
+          ],
+          "title": "Image",
+          "description": "The image while the treatment is in place, with registry, repository and tag or digest"
+        },
+        "container": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "The container whose image changes, by default the first container of the pod template",
+              "title": "Container"
+            },
+            {
+              "$ref": "#/$defs/Placeholder"
+            }
+          ],
+          "title": "Container",
+          "description": "The container whose image changes, by default the first container of the pod template"
+        }
+      },
+      "required": [
+        "namespace",
+        "label_selector",
+        "label",
+        "image"
+      ],
+      "title": "DeploymentImageParams",
+      "type": "object"
+    },
     "DeploymentScaleParams": {
       "additionalProperties": false,
       "description": "Params of scale_deployment",
@@ -2065,6 +2160,7 @@
                 "kube_probl",
                 "kubernetes_otel_metrics_interval",
                 "scale_deployment",
+                "deployment_image",
                 "security_context_kubernetes"
               ],
               "description": "The treatment to run, see the params for each action"
@@ -2288,6 +2384,26 @@
             "properties": {
               "params": {
                 "$ref": "#/$defs/DeploymentScaleParams"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "deployment_image"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "description": "Will change the image of a container of a workload and back to the image before.",
+            "properties": {
+              "params": {
+                "$ref": "#/$defs/DeploymentImageParams"
               }
             }
           }

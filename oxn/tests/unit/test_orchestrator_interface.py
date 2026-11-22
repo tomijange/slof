@@ -6,13 +6,14 @@ import yaml
 from kubernetes import client
 from kubernetes.client.exceptions import ApiException
 
-from oxn.common.errors import OrchestratorException, OxnException
+from oxn.common.errors import OrchestratorException, OrchestratorResourceNotFoundException, OxnException
 from oxn.core.validation import validate_syntax
 from oxn.models.orchestrator import Orchestrator
 from oxn.models.workload import WorkloadInstance, WorkloadSelector
 from oxn.orchestration.kubernetes_orchestrator import PROMETHEUS, KubernetesOrchestrator
 from oxn.steering.steering_controller import SIDECAR_CONTAINER_NAME, SteeringController
 from oxn.tests.unit.spec_mocks import kubernetes_experiment
+from oxn.treatments.compile_time import DeploymentImageTreatment
 from oxn.treatments.registry import TreatmentRegistry
 from oxn.treatments.runtime import EmptyKubernetesTreatment, KillTreatment, NetworkDelayTreatment
 
@@ -100,6 +101,39 @@ class TreatmentOrchestratorTest(unittest.TestCase):
         treatment.inject()
         orchestrator.kill_instance.assert_called_once_with(orchestrator.get_instances.return_value[0])
 
+    def test_the_image_is_changed_and_changed_back(self):
+        orchestrator = generic_orchestrator()
+        orchestrator.get_image.return_value = "ghcr.io/open-telemetry/demo:2.0.2-ad"
+        params = {**SELECTOR, "image": "ghcr.io/open-telemetry/demo:1.12.0-ad", "container": "ad"}
+        treatment = DeploymentImageTreatment(params=params, name="old ad", orchestrator=orchestrator)
+
+        self.assertTrue(treatment.preconditions())
+        treatment.inject()
+        treatment.clean()
+
+        orchestrator.get_image.assert_called_once_with(WORKLOAD, "ad")
+        self.assertEqual(
+            orchestrator.set_image.call_args_list,
+            [
+                mock.call(WORKLOAD, "ghcr.io/open-telemetry/demo:1.12.0-ad", "ad"),
+                mock.call(WORKLOAD, "ghcr.io/open-telemetry/demo:2.0.2-ad", "ad"),
+            ],
+        )
+        self.assertEqual(treatment.messages, [])
+
+    def test_the_image_is_not_changed_back_if_it_could_not_be_read(self):
+        orchestrator = generic_orchestrator()
+        orchestrator.get_image.side_effect = OrchestratorException(message="no deployment", explanation="")
+        treatment = DeploymentImageTreatment(
+            params={**SELECTOR, "image": "busybox"}, name="i", orchestrator=orchestrator
+        )
+
+        treatment.inject()
+        treatment.clean()
+
+        orchestrator.set_image.assert_not_called()
+        self.assertEqual(treatment.messages, ["no deployment"])
+
 
 class KubernetesOrchestratorTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -153,6 +187,61 @@ class KubernetesOrchestratorTest(unittest.TestCase):
         self.orchestrator.set_environment_variable(WORKLOAD, "OTEL_METRIC_EXPORT_INTERVAL", "1000")
         patched = self.apps.patch_namespaced_deployment.call_args.kwargs["body"]
         self.assertEqual(patched.spec.template.spec.containers[0].env[0].value, "1000")
+
+    def test_images_are_read_from_the_main_container_or_a_named_one(self):
+        found = self._deployment("ad", SIDECAR_CONTAINER_NAME)
+        containers(found)[0].image = "ad:1"
+        containers(found)[1].image = "steering:1"
+        self.assertEqual(self.orchestrator.get_image(WORKLOAD), "ad:1")
+        self.assertEqual(self.orchestrator.get_image(WORKLOAD, SIDECAR_CONTAINER_NAME), "steering:1")
+        with self.assertRaises(OrchestratorResourceNotFoundException):
+            self.orchestrator.get_image(WORKLOAD, "other")
+
+    @mock.patch.object(KubernetesOrchestrator, "_wait_until_rollout_done")
+    def test_setting_an_image_patches_only_that_container_and_waits_for_the_rollout(self, wait):
+        self._deployment("ad", SIDECAR_CONTAINER_NAME)
+        self.orchestrator.set_image(WORKLOAD, "ad:2")
+        self.apps.patch_namespaced_deployment.assert_called_once_with(
+            name="ad",
+            namespace="sue",
+            body={"spec": {"template": {"spec": {"containers": [{"name": "ad", "image": "ad:2"}]}}}},
+        )
+        wait.assert_called_once()
+
+    def test_a_rollout_is_done_when_every_replica_runs_the_new_template(self):
+        def status(generation=2, observed=2, replicas=2, updated=2, available=2):
+            return client.V1Deployment(
+                metadata=client.V1ObjectMeta(name="ad", namespace="sue", generation=generation),
+                spec=client.V1DeploymentSpec(
+                    replicas=2, selector=client.V1LabelSelector(), template=client.V1PodTemplateSpec()
+                ),
+                status=client.V1DeploymentStatus(
+                    observed_generation=observed,
+                    replicas=replicas,
+                    updated_replicas=updated,
+                    available_replicas=available,
+                ),
+            )
+
+        for kwargs, done in (
+            ({}, True),
+            ({"observed": 1}, False),
+            ({"updated": 1}, False),
+            ({"replicas": 3}, False),
+            ({"available": 1}, False),
+        ):
+            self.apps.read_namespaced_deployment_status.return_value = status(**kwargs)
+            with self.subTest(**kwargs):
+                self.assertIs(self.orchestrator.is_rollout_done(deployment("ad")), done)
+
+    @mock.patch("oxn.orchestration.kubernetes_orchestrator.time")
+    def test_a_rollout_that_does_not_finish_fails(self, time):
+        time.monotonic.side_effect = [0, 100, 400]
+        with mock.patch.object(KubernetesOrchestrator, "is_rollout_done", return_value=False):
+            with self.assertRaises(OrchestratorException) as raised:
+                self.orchestrator._wait_until_rollout_done(deployment("ad"), "changing the image")
+        self.assertIn("did not roll out", str(raised.exception.message))
+        time.sleep.assert_called_once_with(2)
 
     def test_manifests_are_deployed_by_kind_and_replaced_if_they_exist(self):
         manifest = "kind: Service\nmetadata: {name: locust-master, namespace: sue}\n"

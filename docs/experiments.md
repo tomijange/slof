@@ -252,6 +252,7 @@ The first five are used by the shipped specs.
 | `kubernetes_corrupt` | Runtime | Corrupts a share of the packets of the pods of a deployment |
 | `kubernetes_kill` | Runtime | Kills pods of a deployment |
 | `scale_deployment` | Compile-time | Scales a deployment and back to its replicas before |
+| `deployment_image` | Compile-time | Changes the image of a container of a deployment, waits for the rollout, and changes it back |
 | `security_context_kubernetes` | Compile-time | Adds Linux capabilities to every container of a deployment |
 
 All of them except `empty_kubernetes` and `security_context_kubernetes` only use the [orchestrator interface](architecture.md#orchestrators), so they would also run with another orchestrator. The `kubernetes` in the other action names is historical.
@@ -273,6 +274,8 @@ Parameters without a default are required.
 | `corrupt_correlation` | `kubernetes_corrupt` | Percentage | `0%` |
 | `amount_to_kill` | `kubernetes_kill` | Integer, at least 1 | |
 | `scale_to` | `scale_deployment` | Integer, at least 0 | |
+| `image` | `deployment_image` | Image reference, like `ghcr.io/open-telemetry/demo:2.0.2-recommendation` | |
+| `container` | `deployment_image` | Name of a container of the deployment | The first container of the pod template |
 | `sampling_percentage` | `kube_probl` | Number from 0 to 100. Above 20, `oxn` warns | |
 | `hash_seed` | `kube_probl` | Integer | |
 | `interval` | `kubernetes_otel_metrics_interval` | Time string | |

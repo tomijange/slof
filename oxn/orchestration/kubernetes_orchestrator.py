@@ -350,6 +350,44 @@ class KubernetesOrchestrator(Orchestrator):
             explanation=f"Setting the environment variable {name} failed 10 times",
         )
 
+    def get_image(self, workload: WorkloadSelector, container: Optional[str] = None) -> str:
+        deployment = self.get_workload_deployment(workload)
+        found = self._container(deployment, container)
+        if not found.image:
+            raise OrchestratorException(
+                message=f"Container {found.name} of the deployment with {workload} has no image",
+                explanation="Its pod template sets none",
+            )
+        return found.image
+
+    def set_image(self, workload: WorkloadSelector, image: str, container: Optional[str] = None) -> None:
+        deployment = self.get_workload_deployment(workload)
+        deployment_name, namespace = name_and_namespace(deployment)
+        container_name = self._container(deployment, container).name
+        # a strategic merge patch, which matches containers by name and leaves the others as they are
+        body = {"spec": {"template": {"spec": {"containers": [{"name": container_name, "image": image}]}}}}
+        try:
+            self.api_client.patch_namespaced_deployment(name=deployment_name, namespace=namespace, body=body)
+        except ApiException as e:
+            raise OrchestratorException(
+                message=f"Error while changing the image of the deployment with {workload}: {e.body}",
+                explanation=str(e),
+            )
+        logger.info(f"Image of container {container_name} of deployment {deployment_name} set to {image}")
+        self._wait_until_rollout_done(deployment, f"changing the image of {container_name} to {image}")
+
+    def _container(self, deployment: V1Deployment, name: Optional[str]) -> client.V1Container:
+        """The container of the pod template with a name, by default the main container"""
+        if name is None:
+            return self._main_container(deployment)
+        for container in pod_containers(deployment):
+            if container.name == name:
+                return container
+        raise OrchestratorResourceNotFoundException(
+            message=f"Deployment {name_and_namespace(deployment)[0]} has no container {name}",
+            explanation=f"Its containers are {', '.join(c.name for c in pod_containers(deployment))}",
+        )
+
     @staticmethod
     def _main_container(deployment: V1Deployment) -> client.V1Container:
         """The first container of the pod template, the one environment variables are read from and written to"""
@@ -597,6 +635,39 @@ class KubernetesOrchestrator(Orchestrator):
             time.sleep(i * 2)
             logger.info(f"Waiting for deployment {name} to be ready after {reason}. Retry {i}")
         logger.warning(f"Deployment {name} is still not ready after {reason}")
+
+    def is_rollout_done(self, deployment: V1Deployment) -> bool:
+        """
+        Check if every replica of a deployment runs its current pod template and is available
+
+        The same checks as kubectl rollout status. During a rolling update the old pods are still ready, so
+        is_deployment_ready can be true before the new pods run.
+        """
+        name, namespace = name_and_namespace(deployment)
+        current = self.api_client.read_namespaced_deployment_status(name=name, namespace=namespace)
+        status, spec = current.status, current.spec
+        if status is None or spec is None:
+            return False
+        generation = current.metadata.generation if current.metadata else None
+        if (status.observed_generation or 0) < (generation or 0):
+            return False
+        replicas = spec.replicas if spec.replicas is not None else 1
+        updated = status.updated_replicas or 0
+        return updated >= replicas and (status.replicas or 0) <= updated and (status.available_replicas or 0) >= updated
+
+    def _wait_until_rollout_done(self, deployment: V1Deployment, reason: str, timeout: float = 300) -> None:
+        """Wait until a change to the pod template of a deployment rolled out, see is_rollout_done"""
+        name, _ = name_and_namespace(deployment)
+        deadline = time.monotonic() + timeout
+        while not self.is_rollout_done(deployment):
+            if time.monotonic() > deadline:
+                raise OrchestratorException(
+                    message=f"Deployment {name} did not roll out within {timeout:.0f} seconds after {reason}",
+                    explanation="Check its pods, for example for an image that cannot be pulled",
+                )
+            logger.info(f"Waiting for deployment {name} to roll out after {reason}")
+            time.sleep(2)
+        logger.info(f"Deployment {name} rolled out after {reason}")
 
     def pods_of_deployment(self, deployment: V1Deployment) -> List[V1Pod]:
         """

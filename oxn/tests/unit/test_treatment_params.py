@@ -92,6 +92,7 @@ class SpecTreatmentValidationTest(unittest.TestCase):
                 "interval",
             ),
             ("security_context_kubernetes", {**SELECTOR, "capabilities": {"add": []}}, "capabilities.add"),
+            ("deployment_image", {**SELECTOR, "image": ""}, "image"),
         ):
             with self.subTest(action=action, field=field):
                 self.assertIn(f"{field}:", self._error(action, params))
@@ -105,6 +106,8 @@ class SpecTreatmentValidationTest(unittest.TestCase):
             ("kubernetes_corrupt", {**loss, "corrupt_percentage": "10%"}),
             ("kubernetes_kill", {**SELECTOR, "amount_to_kill": 1}),
             ("scale_deployment", {**SELECTOR, "scale_to": 0}),
+            ("deployment_image", {**SELECTOR, "image": "ghcr.io/open-telemetry/demo:2.0.2-ad"}),
+            ("deployment_image", {**SELECTOR, "image": "busybox", "container": "ad"}),
             ("kube_probl", {"sampling_percentage": 5.0, "hash_seed": 22}),
             ("kubernetes_otel_metrics_interval", {**SELECTOR, "interval": "15s"}),
             ("kubernetes_prometheus_interval", {"interval": "5s", "evaluation_interval": "5s", "scrape_timeout": "3s"}),

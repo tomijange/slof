@@ -92,6 +92,18 @@ class Orchestrator(ABC):
     def set_environment_variable(self, workload: WorkloadSelector, name: str, value: str) -> None:
         """Set an environment variable of the main container of a workload, which restarts its copies"""
 
+    @abstractmethod
+    def get_image(self, workload: WorkloadSelector, container: Optional[str] = None) -> str:
+        """Return the image of a container of a workload, by default of its main container"""
+
+    @abstractmethod
+    def set_image(self, workload: WorkloadSelector, image: str, container: Optional[str] = None) -> None:
+        """
+        Change the image of a container of a workload, by default of its main container
+
+        Replaces the copies of the workload and waits until every copy runs the new image.
+        """
+
     # Network faults with tc netem, inside every copy of a workload
 
     @abstractmethod

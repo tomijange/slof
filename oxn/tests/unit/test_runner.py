@@ -40,6 +40,7 @@ class TreatmentKindTest(unittest.TestCase):
         "kubernetes_otel_metrics_interval",
         "kube_probl",
         "scale_deployment",
+        "deployment_image",
         "kubernetes_prometheus_interval",
     }
 

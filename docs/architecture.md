@@ -47,7 +47,7 @@ The engine, load generators, observability clients and treatments use the SUE th
 |---|---|
 | Lifecycle | `orchestrate`, `ready`, `teardown` |
 | Addresses | `get_address_for_service`, `get_prometheus_url` and `get_jaeger_url`, external through the API server proxy or `internal=True` for the cluster DNS name, `http_session` for external urls |
-| Workloads | `get_instances`, `kill_instance`, `get_replicas`, `scale`, `restart`, `is_ready`, `get_environment_variable`, `set_environment_variable` |
+| Workloads | `get_instances`, `kill_instance`, `get_replicas`, `scale`, `restart`, `is_ready`, `get_environment_variable`, `set_environment_variable`, `get_image`, `set_image` |
 | Network faults | `prepare_network_faults`, `set_network_delay`, `set_network_loss`, `set_network_corruption`, `remove_network_faults` |
 | Telemetry configuration | Get and set the global scrape values of the SUE's Prometheus and the collector's probabilistic sampler. Setting restarts the component |
 

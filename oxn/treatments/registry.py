@@ -16,6 +16,7 @@ from oxn.models.orchestrator import Orchestrator
 from oxn.models.treatment import Treatment
 from oxn.models.treatment_params import TreatmentParams
 from oxn.treatments.compile_time import (
+    DeploymentImageTreatment,
     DeploymentScaleTreatment,
     KubernetesApplySecurityContextTreatment,
     MetricsExportIntervalTreatment,
@@ -44,6 +45,7 @@ BUILTIN_TREATMENTS: List[type[Treatment]] = [
     ProbabilisticHeadSamplingTreatment,
     MetricsExportIntervalTreatment,
     DeploymentScaleTreatment,
+    DeploymentImageTreatment,
     KubernetesApplySecurityContextTreatment,
 ]
 """The treatments every registry starts with"""
