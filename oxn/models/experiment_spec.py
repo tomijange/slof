@@ -266,8 +266,78 @@ class Manifests(SpecModel):
         return f"manifests {', '.join(self.paths)}"
 
 
+def _has_pinned_tag(name: str) -> bool:
+    """True if an image reference ends in a tag other than latest, or a digest"""
+    last = name.rsplit("/", 1)[-1]
+    if "@" in last:
+        return True
+    return ":" in last and last.rsplit(":", 1)[1] not in ("", "latest")
+
+
+class ImageBuild(SpecModel):
+    """
+    A container image built with docker buildx and made available to the cluster, as one deployment step
+
+    The step only builds and delivers the image. A treatment such as deployment_image, or the values of a Helm step,
+    makes pods use it.
+    """
+
+    kind: Literal["image"] = "image"
+    name: str
+    """The image reference the pods use, with a tag other than latest, like ghcr.io/me/recommendation-rust:0.1.0"""
+    context: str
+    """The folder to build"""
+    dockerfile: Optional[str] = None
+    """The Dockerfile, by default the Dockerfile in context"""
+    build_args: Dict[str, str] = Field(default_factory=dict)
+    delivery: Literal["push", "import"] = "push"
+    """push: push the image to the registry in name, the nodes pull it from there. import: import it into the
+    containerd of every node through a short-lived privileged pod, without a registry"""
+    platforms: List[str] = Field(default_factory=list)
+    """For push, the platforms to build, like linux/amd64. By default, and always for import, the ones of the nodes"""
+
+    @field_validator("context", "dockerfile")
+    @classmethod
+    def _paths_next_to_the_spec(cls, path: Optional[str], info: ValidationInfo) -> Optional[str]:
+        return None if path is None else _resolve_path(path, info)
+
+    @field_validator("name")
+    @classmethod
+    def _pinned(cls, name: str) -> str:
+        # Kubernetes pulls latest images on every start, which fails for imported images and is not reproducible
+        if not _has_pinned_tag(name):
+            raise ValueError(f"Expected an image with a tag other than latest, like {name.split(':')[0]}:0.1.0")
+        return name
+
+    @field_validator("platforms")
+    @classmethod
+    def _platforms_only_for_push(cls, platforms: List[str], info: ValidationInfo) -> List[str]:
+        if platforms and info.data.get("delivery") == "import":
+            raise ValueError("An imported image is built for the platform of each node, leave out platforms")
+        return platforms
+
+    def build_command(self, platforms: List[str], output: str) -> List[str]:
+        command = ["docker", "buildx", "build", "--platform", ",".join(platforms), "--tag", self.name]
+        if self.dockerfile:
+            command += ["--file", self.dockerfile]
+        for key, value in self.build_args.items():
+            command += ["--build-arg", f"{key}={value}"]
+        return command + ["--output", output, self.context]
+
+    def push_command(self, platforms: List[str]) -> List[str]:
+        """Build for the platforms and push to the registry in name"""
+        return self.build_command(platforms, "type=registry")
+
+    def archive_command(self, platform: str, path: str) -> List[str]:
+        """Build for one platform into an image archive at path, which ctr images import reads"""
+        return self.build_command([platform], f"type=docker,dest={path}")
+
+    def __str__(self):
+        return f"image {self.name}"
+
+
 DeploymentStep = Annotated[
-    Union[HelmRelease, Manifests],
+    Union[HelmRelease, Manifests, ImageBuild],
     Field(discriminator="kind"),
     BeforeValidator(_flatten_entry("kind")),
 ]
@@ -282,7 +352,7 @@ class Namespace(SpecModel):
 
 class DeploymentDescription(SpecModel):
     """
-    The deployment section: Helm releases and plain manifests that make up the SUE and its observability stack
+    The deployment section: Helm releases, plain manifests and images that make up the SUE and its observability stack
 
     The section looks like this (see experiments/ for complete examples):
 
@@ -303,6 +373,10 @@ class DeploymentDescription(SpecModel):
                 paths: [../k8s/elasticsearch/]
                 namespace: system-under-evaluation
                 wait_for: [deployment/elasticsearch]
+            - image:
+                name: slof.local/recommendation-rust:0.1.0
+                context: images/recommendation-rust
+                delivery: import
 
     Relative paths are resolved against the folder of the spec file, like the other paths in an experiment spec.
     """

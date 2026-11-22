@@ -3,6 +3,8 @@ import os
 import unittest
 from unittest import mock
 
+import pydantic
+from kubernetes import client
 from kubernetes.client.exceptions import ApiException
 
 from oxn.common.errors import DeploymentException, OxnException
@@ -15,7 +17,7 @@ from oxn.core.validation import (
     read_experiment_specification,
     validate_syntax,
 )
-from oxn.models.experiment_spec import DeploymentDescription, HelmRelease
+from oxn.models.experiment_spec import DeploymentDescription, HelmRelease, ImageBuild
 from oxn.orchestration.deployment import Deployment
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -67,7 +69,7 @@ class DeploymentTest(unittest.TestCase):
         self.addCleanup(which.stop)
 
     def _deployment(self):
-        def run(command):
+        def run(command, input_path=None):
             self.commands.append(command)
             if command[:2] == ["helm", "status"] and command[2] in self.failing:
                 raise DeploymentException(message="not installed")
@@ -149,6 +151,131 @@ class DeploymentTest(unittest.TestCase):
         with mock.patch("oxn.orchestration.deployment.shutil.which", return_value=None):
             with self.assertRaises(DeploymentException):
                 self.deployment.deploy()
+
+
+def node(name: str, architecture: str) -> client.V1Node:
+    return client.V1Node(
+        metadata=client.V1ObjectMeta(name=name),
+        status=client.V1NodeStatus(
+            node_info=client.V1NodeSystemInfo(
+                architecture=architecture,
+                operating_system="linux",
+                boot_id="",
+                container_runtime_version="",
+                kernel_version="",
+                kube_proxy_version="",
+                kubelet_version="",
+                machine_id="",
+                os_image="",
+                system_uuid="",
+            )
+        ),
+    )
+
+
+class ImageStepTest(unittest.TestCase):
+    IMAGE = {"name": "slof.local/recommendation-rust:0.1.0", "context": "images/recommendation-rust"}
+
+    def setUp(self) -> None:
+        self.commands = []
+        self.inputs = []
+        self.failing_exec = False
+        which = mock.patch("oxn.orchestration.deployment.shutil.which", return_value="/usr/bin/tool")
+        which.start()
+        self.addCleanup(which.stop)
+
+    def _deployment(self, **image):
+        def run(command, input_path=None):
+            self.commands.append(command)
+            self.inputs.append(input_path)
+            if command[:2] == ["kubectl", "exec"] and self.failing_exec:
+                raise DeploymentException(message="import failed")
+            return ""
+
+        steps = [{"image": {**self.IMAGE, **image}}]
+        deployment = Deployment(DeploymentDescription.model_validate({"steps": steps}), run=run)
+        deployment._core = mock.MagicMock()
+        deployment._core.list_node.return_value = client.V1NodeList(
+            items=[node("a", "amd64"), node("b", "amd64"), node("c", "arm64")]
+        )
+        return deployment
+
+    def test_the_image_needs_a_pinned_tag(self):
+        for name in ("recommendation-rust", "recommendation-rust:latest", "localhost:5000/recommendation-rust"):
+            with self.subTest(name=name), self.assertRaises(pydantic.ValidationError):
+                ImageBuild.model_validate({**self.IMAGE, "name": name})
+        for name in ("localhost:5000/r:0.1.0", "ghcr.io/me/r@sha256:abc"):
+            with self.subTest(name=name):
+                ImageBuild.model_validate({**self.IMAGE, "name": name})
+
+    def test_imported_images_are_built_for_the_nodes(self):
+        with self.assertRaises(pydantic.ValidationError):
+            ImageBuild.model_validate({**self.IMAGE, "delivery": "import", "platforms": ["linux/amd64"]})
+
+    def test_paths_are_resolved_against_the_spec(self):
+        image = ImageBuild.model_validate(
+            {**self.IMAGE, "dockerfile": "images/Dockerfile.rust"}, context={"spec_dir": "experiments/slo"}
+        )
+        self.assertEqual(image.context, "experiments/slo/images/recommendation-rust")
+        self.assertEqual(image.dockerfile, "experiments/slo/images/Dockerfile.rust")
+
+    def test_pushed_images_are_built_for_the_platforms_of_the_nodes(self):
+        self._deployment(build_args={"PROFILE": "release"}).deploy()
+        self.assertEqual(
+            self.commands,
+            [
+                ["docker", "buildx", "build", "--platform", "linux/amd64,linux/arm64"]
+                + ["--tag", "slof.local/recommendation-rust:0.1.0", "--build-arg", "PROFILE=release"]
+                + ["--output", "type=registry", "images/recommendation-rust"]
+            ],
+        )
+
+    def test_pushed_images_can_name_their_platforms(self):
+        self._deployment(platforms=["linux/riscv64"]).deploy()
+        self.assertIn("linux/riscv64", self.commands[0])
+
+    def test_imported_images_are_built_per_platform_and_streamed_into_every_node(self):
+        deployment = self._deployment(delivery="import")
+        deployment.deploy()
+
+        builds = [c for c in self.commands if c[:2] == ["docker", "buildx"]]
+        self.assertEqual([c[c.index("--platform") + 1] for c in builds], ["linux/amd64", "linux/arm64"])
+        self.assertTrue(builds[0][builds[0].index("--output") + 1].startswith("type=docker,dest="))
+
+        pods = [call.args[1] for call in deployment._core.create_namespaced_pod.call_args_list]
+        self.assertEqual([pod.spec.node_name for pod in pods], ["a", "b", "c"])
+        self.assertTrue(pods[0].spec.host_pid)
+        self.assertTrue(pods[0].spec.containers[0].security_context.privileged)
+
+        imports = [(c, i) for c, i in zip(self.commands, self.inputs) if c[:2] == ["kubectl", "exec"]]
+        self.assertEqual(len(imports), 3)
+        command, archive = imports[0]
+        self.assertEqual(command[command.index("--") + 1 :][:5], ["nsenter", "-t", "1", "-m", "--"])
+        self.assertTrue(archive.endswith("linux-amd64.tar"))
+        self.assertTrue(imports[2][1].endswith("linux-arm64.tar"))
+        self.assertEqual(deployment._core.delete_namespaced_pod.call_count, 3)
+
+    def test_the_import_pod_is_removed_when_the_import_fails(self):
+        deployment = self._deployment(delivery="import")
+        self.failing_exec = True
+        with self.assertRaises(DeploymentException):
+            deployment.deploy()
+        deployment._core.delete_namespaced_pod.assert_called_once()
+
+    def test_teardown_keeps_the_image(self):
+        self._deployment(delivery="import").teardown()
+        self.assertEqual(self.commands, [])
+
+    def test_it_needs_docker(self):
+        deployment = self._deployment()
+
+        def which(tool):
+            return None if tool == "docker" else "/usr/bin/tool"
+
+        with mock.patch("oxn.orchestration.deployment.shutil.which", side_effect=which):
+            with self.assertRaises(DeploymentException) as raised:
+                deployment.deploy()
+        self.assertIn("docker", str(raised.exception.message))
 
 
 class DeploymentSchemaTest(unittest.TestCase):

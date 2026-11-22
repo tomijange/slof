@@ -244,7 +244,7 @@
     },
     "DeploymentDescription": {
       "additionalProperties": false,
-      "description": "The deployment section: Helm releases and plain manifests that make up the SUE and its observability stack\n\nThe section looks like this (see experiments/ for complete examples):\n\n    deployment:\n      namespaces:\n        - name: system-under-evaluation\n          labels: {istio-injection: enabled}\n      steps:\n        - helm:\n            release: astronomy-shop\n            chart: opentelemetry-demo\n            repo: https://open-telemetry.github.io/opentelemetry-helm-charts\n            version: 0.42.6\n            namespace: system-under-evaluation\n            values: [../deployments/values/values_opentelemetry_demo.yaml]\n            set: {components.recommendation.resources.limits.cpu: 500m}\n        - manifests:\n            paths: [../k8s/elasticsearch/]\n            namespace: system-under-evaluation\n            wait_for: [deployment/elasticsearch]\n\nRelative paths are resolved against the folder of the spec file, like the other paths in an experiment spec.",
+      "description": "The deployment section: Helm releases, plain manifests and images that make up the SUE and its observability stack\n\nThe section looks like this (see experiments/ for complete examples):\n\n    deployment:\n      namespaces:\n        - name: system-under-evaluation\n          labels: {istio-injection: enabled}\n      steps:\n        - helm:\n            release: astronomy-shop\n            chart: opentelemetry-demo\n            repo: https://open-telemetry.github.io/opentelemetry-helm-charts\n            version: 0.42.6\n            namespace: system-under-evaluation\n            values: [../deployments/values/values_opentelemetry_demo.yaml]\n            set: {components.recommendation.resources.limits.cpu: 500m}\n        - manifests:\n            paths: [../k8s/elasticsearch/]\n            namespace: system-under-evaluation\n            wait_for: [deployment/elasticsearch]\n        - image:\n            name: slof.local/recommendation-rust:0.1.0\n            context: images/recommendation-rust\n            delivery: import\n\nRelative paths are resolved against the folder of the spec file, like the other paths in an experiment spec.",
       "properties": {
         "namespaces": {
           "anyOf": [
@@ -277,7 +277,7 @@
                 "anyOf": [
                   {
                     "type": "object",
-                    "description": "A Helm release or a folder of manifests",
+                    "description": "A Helm release, a folder of manifests or an image to build",
                     "properties": {
                       "helm": {
                         "anyOf": [
@@ -298,6 +298,16 @@
                             "$ref": "#/$defs/Placeholder"
                           }
                         ]
+                      },
+                      "image": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/ImageBuild"
+                          },
+                          {
+                            "$ref": "#/$defs/Placeholder"
+                          }
+                        ]
                       }
                     },
                     "additionalProperties": false,
@@ -308,7 +318,7 @@
                     "$ref": "#/$defs/Placeholder"
                   }
                 ],
-                "description": "A Helm release or a folder of manifests"
+                "description": "A Helm release, a folder of manifests or an image to build"
               }
             },
             {
@@ -891,6 +901,133 @@
         "namespace"
       ],
       "title": "HelmRelease",
+      "type": "object"
+    },
+    "ImageBuild": {
+      "additionalProperties": false,
+      "description": "A container image built with docker buildx and made available to the cluster, as one deployment step\n\nThe step only builds and delivers the image. A treatment such as deployment_image, or the values of a Helm step,\nmakes pods use it.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "description": "The image reference the pods use, with a tag other than latest, like ghcr.io/me/recommendation-rust:0.1.0",
+              "title": "Name",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Placeholder"
+            }
+          ],
+          "title": "Name",
+          "description": "The image reference the pods use, with a tag other than latest, like ghcr.io/me/recommendation-rust:0.1.0"
+        },
+        "context": {
+          "anyOf": [
+            {
+              "description": "The folder to build",
+              "title": "Context",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Placeholder"
+            }
+          ],
+          "title": "Context",
+          "description": "The folder to build"
+        },
+        "dockerfile": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "The Dockerfile, by default the Dockerfile in context",
+              "title": "Dockerfile"
+            },
+            {
+              "$ref": "#/$defs/Placeholder"
+            }
+          ],
+          "title": "Dockerfile",
+          "description": "The Dockerfile, by default the Dockerfile in context"
+        },
+        "build_args": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/Placeholder"
+                  }
+                ]
+              },
+              "title": "Build Args",
+              "type": "object"
+            },
+            {
+              "$ref": "#/$defs/Placeholder"
+            }
+          ],
+          "title": "Build Args"
+        },
+        "delivery": {
+          "anyOf": [
+            {
+              "default": "push",
+              "description": "push: push the image to the registry in name, the nodes pull it from there. import: import it into the\ncontainerd of every node through a short-lived privileged pod, without a registry",
+              "enum": [
+                "push",
+                "import"
+              ],
+              "title": "Delivery",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Placeholder"
+            }
+          ],
+          "title": "Delivery",
+          "description": "push: push the image to the registry in name, the nodes pull it from there. import: import it into the\ncontainerd of every node through a short-lived privileged pod, without a registry"
+        },
+        "platforms": {
+          "anyOf": [
+            {
+              "description": "For push, the platforms to build, like linux/amd64. By default, and always for import, the ones of the nodes",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/Placeholder"
+                  }
+                ]
+              },
+              "title": "Platforms",
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/Placeholder"
+            }
+          ],
+          "title": "Platforms",
+          "description": "For push, the platforms to build, like linux/amd64. By default, and always for import, the ones of the nodes"
+        }
+      },
+      "required": [
+        "name",
+        "context"
+      ],
+      "title": "ImageBuild",
       "type": "object"
     },
     "KillParams": {

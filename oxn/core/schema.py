@@ -110,7 +110,7 @@ def spec_schema(registry: TreatmentRegistry) -> Dict[str, Any]:
 
     for name in ("MetricResponseDescription", "TraceResponseDescription", "TreatmentDescription"):
         _drop_property(defs[name], "name")
-    for name in ("HelmRelease", "Manifests"):
+    for name in ("HelmRelease", "Manifests", "ImageBuild"):
         _drop_property(defs[name], "kind")
 
     treatment = defs["TreatmentDescription"]
@@ -140,8 +140,8 @@ def spec_schema(registry: TreatmentRegistry) -> Dict[str, Any]:
         "description": "The ordered deployment steps",
         "items": {
             "type": "object",
-            "description": "A Helm release or a folder of manifests",
-            "properties": {"helm": _ref("HelmRelease"), "manifests": _ref("Manifests")},
+            "description": "A Helm release, a folder of manifests or an image to build",
+            "properties": {"helm": _ref("HelmRelease"), "manifests": _ref("Manifests"), "image": _ref("ImageBuild")},
             "additionalProperties": False,
             "minProperties": 1,
             "maxProperties": 1,

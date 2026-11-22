@@ -1,6 +1,6 @@
 # Deployments
 
-The `deployment` section of an experiment spec describes the SUE and its observability stack as an ordered list of Helm releases and manifest folders. `oxn` applies it around every experiment run, so each run starts from a clean cluster. It is defined by `DeploymentDescription`, part of the experiment spec model in `oxn/models/experiment_spec.py`.
+The `deployment` section of an experiment spec describes the SUE and its observability stack as an ordered list of Helm releases, manifest folders and images to build. `oxn` applies it around every experiment run, so each run starts from a clean cluster. It is defined by `DeploymentDescription`, part of the experiment spec model in `oxn/models/experiment_spec.py`.
 
 ## Shipped setups
 
@@ -63,17 +63,36 @@ experiment:
           namespace: system-under-evaluation
           wait_for: [deployment/elasticsearch]
           timeout: 15m               # optional, default 15m
+      - image:
+          name: slof.local/recommendation-rust:0.1.0
+          context: ../images/recommendation-rust
+          dockerfile: ../images/recommendation-rust/Dockerfile   # optional, default the Dockerfile in context
+          build_args: {PROFILE: release}                        # optional
+          delivery: import           # or push, the default
 ```
 
-Relative paths in `values` and `paths` are resolved against the folder of the spec file, so this spec lives in `experiments/`.
+Relative paths in `values`, `paths`, `context` and `dockerfile` are resolved against the folder of the spec file, so this spec lives in `experiments/`.
+
+## Images
+
+An `image` step builds an image with `docker buildx build` and makes it available to the cluster. It does not change any workload: the [`deployment_image` treatment](experiments.md#built-in-treatments) or the values of a Helm step make pods use it. A step's `name` needs a tag other than `latest`, because Kubernetes pulls `latest` on every start.
+
+| `delivery` | What happens | Needs |
+|---|---|---|
+| `push` | Builds for `platforms`, by default the platforms of the nodes, and pushes to the registry in `name` | A registry the nodes can pull from, and `docker login` to it |
+| `import` | Builds one archive per platform of the nodes and streams it into the containerd of every node | Privileged pods in `kube-system`, MicroK8s, k3s or containerd at `/run/containerd` |
+
+The builds cross-compile or emulate, so an image for amd64 nodes builds on an arm64 Mac. For `import`, `oxn` starts a busybox pod with `hostPID` and `privileged` on each node, runs `ctr images import` of the node's containerd in the node's mount namespace with the archive on stdin through `kubectl exec`, and deletes the pod. The pods pull `busybox`, so the nodes need to reach Docker Hub.
+
+Deploying again builds again, with the build cache of Docker, so repeated runs take seconds. Teardown keeps the image, in the registry or on the nodes.
 
 ## What deploy and teardown do
 
-**Deploy** creates the listed namespaces and then runs the steps in order. Helm steps use `helm upgrade --install --wait`, so deploying again upgrades in place. The OpenTelemetry Demo chart does not support this across chart versions, so tear down before you change its version.
+**Deploy** creates the listed namespaces and then runs the steps in order. Image steps build and deliver their image, see [Images](#images). Helm steps use `helm upgrade --install --wait`, so deploying again upgrades in place. The OpenTelemetry Demo chart does not support this across chart versions, so tear down before you change its version.
 
 **Teardown** does the following:
 
-1. Runs the steps in reverse order.
+1. Runs the steps in reverse order. Image steps are skipped.
 2. Deletes the PVCs labelled with each uninstalled Helm release's name.
 3. Deletes the namespaces listed under `namespaces`.
 

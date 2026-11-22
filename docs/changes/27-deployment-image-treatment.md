@@ -4,7 +4,7 @@
 
 ## Summary
 
-In GOXN, a treatment can scale, kill or slow down a service, but the service always runs the image its chart names. To compare implementations, the chart values have to be changed by hand for each run. This change adds a treatment for it and the orchestrator methods it needs. The image has to come from a registry the nodes can pull from.
+In GOXN, a treatment can scale, kill or slow down a service, but the service always runs the image its chart names. To compare implementations, the chart values have to be changed by hand for each run. This change adds a treatment for it and the orchestrator methods it needs. The image can come from a registry or from an `image` deployment step, see [change 28](28-image-deployment-step.md).
 
 | | GOXN | After this change |
 |---|---|---|
@@ -77,7 +77,7 @@ After the patch, `_wait_until_rollout_done` polls `is_rollout_done` every 2 seco
 - `is_rollout_done` is false for an unobserved generation, missing updated replicas, old replicas or unavailable ones,
 - the wait raises after its timeout.
 
-`test_runner.py` lists `deployment_image` as compile-time, and `test_treatment_params.py` checks its params. `python -m pytest oxn/tests/unit` reports 269 passing tests and the 3 failures [change 18](18-formatting-and-type-fixes.md#known-limitations) lists.
+`test_runner.py` lists `deployment_image` as compile-time, and `test_treatment_params.py` checks its params. `python -m pytest oxn/tests/unit` reports 278 passing tests, together with [change 28](28-image-deployment-step.md#tests), and the 3 failures [change 18](18-formatting-and-type-fixes.md#known-limitations) lists.
 
 ## Known limitations
 
